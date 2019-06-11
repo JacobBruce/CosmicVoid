@@ -1,0 +1,137 @@
+#define STR_COSMIC_VOID 0
+#define STR_STAR 1
+#define STR_MASS 2
+#define STR_RADIUS 3
+#define STR_TEMP 4
+#define STR_LUMI 5
+#define STR_DENSITY 6
+#define STR_VOLUME 7
+#define STR_AREA 8
+#define STR_TYPE 9
+#define STR_AGE 10
+#define STR_OXYGEN 11
+#define STR_CARBON 12
+#define STR_HYDROGEN 13
+#define STR_NITROGEN 14
+#define STR_HELIUM 15
+#define STR_METALL 16
+#define STR_DISTANCE 17
+#define STR_COORDS 18
+
+#define STR_VELOCITY 19
+#define STR_LIGHTYEAR 20
+#define STR_LY 21
+#define STR_KG 22
+#define STR_KM 23
+#define STR_AU 24
+#define STR_M 25
+#define STR_S 26
+#define STR_K 27
+#define STR_W 28
+
+#define STR_HUNDRED 29
+#define STR_THOUSAND 30
+#define STR_MILLION 31
+#define STR_BILLION 32
+#define STR_TRILLION 33
+
+#define STR_SECONDS 34
+#define STR_MINUTES 35
+#define STR_HOURS 36
+#define STR_DAYS 37
+#define STR_WEEKS 38
+#define STR_MONTHS 39
+#define STR_YEARS 40
+
+#define STR_RED 41
+#define STR_BLUE 42
+#define STR_YELLOW 43
+#define STR_ORANGE 44
+#define STR_WHITE 45
+#define STR_BLACK 46
+#define STR_BROWN 47
+
+#define STR_ORANGE_D 48
+#define STR_WHITE_D 49
+#define STR_YELLOW_D 50
+#define STR_BROWN_D 51
+#define STR_RED_D 52
+#define STR_RED_G 53
+#define STR_RED_S 54
+#define STR_RED_H 55
+#define STR_BLUE_G 56
+#define STR_BLUE_S 57
+#define STR_BLUE_H 58
+#define STR_YELLOW_G 59
+#define STR_YELLOW_S 60
+#define STR_YELLOW_H 61
+#define STR_NEUTRON_S 62
+#define STR_BLACK_H 63
+
+#define STR_PLANET 64
+#define STR_DWARF_PLANET 65
+#define STR_GAS_DWARF 66
+#define STR_GAS_GIANT 67
+#define STR_ICE_PLANET 68
+#define STR_ICE_GIANT 69
+#define STR_WATER_PLANET 70
+#define STR_EARTH_PLANET 71
+#define STR_DESERT_PLANET 72
+#define STR_SILICATE_PLANET 73
+#define STR_LAVA_PLANET 74
+#define STR_CARBON_PLANET 75
+#define STR_IRON_PLANET 76
+
+#define STR_MOON 77
+#define STR_VOLCANIC_MOON 78
+#define STR_ICE_MOON 79
+#define STR_WATER_MOON 80
+#define STR_ROCK_MOON 81
+
+#define STR_UNKNOWN 82
+#define STR_INVALID 83
+
+#define STR_ZONE 84
+#define STR_SECTOR 85
+#define STR_INT_SPACE 86
+#define STR_SOLAR_SYS 87
+
+#define STR_LOCKED 88
+#define STR_LOCKING 89
+#define STR_SCANNING 90
+#define STR_HELP_LOCK 91
+#define STR_HELP_SCAN 92
+#define STR_HELP_ANAL 93
+
+#define STR_FUNCTION 94
+#define STR_MOONS 95
+#define STR_LIFE_LEVEL 96
+#define STR_HOSTILITY 97
+#define STR_SPECIES 98
+#define STR_HABITABILITY 99
+#define STR_WATER_FRAC 100
+#define STR_ECCENTRICITY 101
+#define STR_ORBIT_RAD 102
+#define STR_ORBIT_TIME 103
+#define STR_ROT_TIME 104
+
+#define STR_NO_LIFE 105
+#define STR_SINGLE_CELLED 106
+#define STR_SIMPLE_LIFE 107
+#define STR_COMPLEX_LIFE 108
+#define STR_PRIMITIVE_CIV 109
+#define STR_TYPE_0_CIV 110
+#define STR_TYPE_I_CIV 111
+#define STR_TYPE_II_CIV 112
+#define STR_TYPE_III_CIV 113
+
+#define STR_NOT_USED 114
+#define STR_PIRATE_BASE 115
+#define STR_WASTE_DISPOSAL 116
+#define STR_COLONIZATION 117
+#define STR_INDUSTRIALIZATION 118
+#define STR_COMMERCIALIZATION 119
+#define STR_PLANET_DEFENSE 120
+#define STR_SCIENTIFIC_RESEARCH 121
+#define STR_TRADING_HUB 122
+#define STR_PLANET_ENTRY_PORT 123

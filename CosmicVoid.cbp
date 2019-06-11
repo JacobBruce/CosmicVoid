@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="CosmicVoid" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Debug">
+				<Option output="bin/Debug/CosmicVoid" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="C:\CB_Projects\CosmicVoid\" />
+				<Compiler>
+					<Add option="-g" />
+				</Compiler>
+			</Target>
+			<Target title="Release">
+				<Option output="bin/Release/CosmicVoid" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="C:\CB_Projects\CosmicVoid\" />
+				<Compiler>
+					<Add option="-O2" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+			<Add option="-std=c++11" />
+			<Add option="-m64" />
+			<Add option="-fexceptions" />
+			<Add option="-DGLEW_STATIC" />
+			<Add directory="C:/Program Files (x86)/AMD APP SDK/2.9-1/include" />
+			<Add directory="vendor/soil2/src/SOIL2" />
+			<Add directory="vendor/freetype-gl" />
+			<Add directory="vendor/soloud/include" />
+			<Add directory="vendor" />
+		</Compiler>
+		<Linker>
+			<Add option="-m64" />
+			<Add library="soloud" />
+			<Add library="winmm" />
+			<Add library="freetype-gl" />
+			<Add library="freetype" />
+			<Add library="soil2" />
+			<Add library="opencl" />
+			<Add library="glew32" />
+			<Add library="glfw3" />
+			<Add library="opengl32" />
+			<Add library="glu32" />
+			<Add library="gdi32" />
+			<Add directory="C:/Program Files (x86)/AMD APP SDK/2.9-1/lib/x86_64" />
+			<Add directory="vendor/soil2/lib/windows" />
+			<Add directory="vendor/freetype-gl/lib" />
+			<Add directory="vendor/soloud/bin" />
+		</Linker>
+		<Unit filename="CLTypes.h" />
+		<Unit filename="Camera.h" />
+		<Unit filename="Colors.h" />
+		<Unit filename="Data/sounds.inc" />
+		<Unit filename="Data/strings.inc" />
+		<Unit filename="Data/textures.inc" />
+		<Unit filename="GLFWFuncs.h" />
+		<Unit filename="GLGraphics.cpp" />
+		<Unit filename="GLGraphics.h" />
+		<Unit filename="Game.cpp" />
+		<Unit filename="Game.h" />
+		<Unit filename="Keyboard.cpp" />
+		<Unit filename="Keyboard.h" />
+		<Unit filename="MathExt.h" />
+		<Unit filename="Mouse.cpp" />
+		<Unit filename="Mouse.h" />
+		<Unit filename="OpenCL.h" />
+		<Unit filename="OpenGL.h" />
+		<Unit filename="Profiles.h" />
+		<Unit filename="ReadWrite.cpp" />
+		<Unit filename="ReadWrite.h" />
+		<Unit filename="Resource.h" />
+		<Unit filename="SoilPP.h" />
+		<Unit filename="Sound.h" />
+		<Unit filename="StringExt.h" />
+		<Unit filename="Timer.cpp" />
+		<Unit filename="Timer.h" />
+		<Unit filename="Vec3.h" />
+		<Unit filename="freetype-gl-cpp.h" />
+		<Unit filename="freetype-mat4.h" />
+		<Unit filename="main.cpp" />
+		<Extensions>
+			<code_completion />
+			<envvars />
+			<debugger />
+			<lib_finder disable_auto="1" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>
