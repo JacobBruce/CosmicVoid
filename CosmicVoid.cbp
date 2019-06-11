@@ -40,14 +40,24 @@
 			<Add directory="vendor/soil2/src/SOIL2" />
 			<Add directory="vendor/freetype-gl" />
 			<Add directory="vendor/soloud/include" />
+			<Add directory="vendor/harfbuzz/src" />
 			<Add directory="vendor" />
 		</Compiler>
 		<Linker>
+			<Add option="-static-libstdc++" />
+			<Add option="-static-libgcc" />
+			<Add option="-static" />
 			<Add option="-m64" />
 			<Add library="soloud" />
 			<Add library="winmm" />
 			<Add library="freetype-gl" />
 			<Add library="freetype" />
+			<Add library="harfbuzz" />
+			<Add library="png16" />
+			<Add library="bz2" />
+			<Add library="z" />
+			<Add library="freetype" />
+			<Add library="glib-2.0" />
 			<Add library="soil2" />
 			<Add library="opencl" />
 			<Add library="glew32" />
@@ -55,10 +65,13 @@
 			<Add library="opengl32" />
 			<Add library="glu32" />
 			<Add library="gdi32" />
+			<Add library="graphite2" />
+			<Add library="stdc++" />
 			<Add directory="C:/Program Files (x86)/AMD APP SDK/2.9-1/lib/x86_64" />
 			<Add directory="vendor/soil2/lib/windows" />
 			<Add directory="vendor/freetype-gl/lib" />
 			<Add directory="vendor/soloud/bin" />
+			<Add directory="vendor/harfbuzz/bin" />
 		</Linker>
 		<Unit filename="CLTypes.h" />
 		<Unit filename="Camera.h" />

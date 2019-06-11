@@ -23,6 +23,8 @@ Control settings can be changed in the settings.cfg file. Click a star, planet, 
 
 Ideally you should try to build Cosmic Void in Code::Blocks with gcc by using the included project file (update the search directories for the AMD APP SDK and the project program arguments if necessary). I developed this on Windows using the mingw64 gcc compiler but I tried to keep the code portable so any problems should be easy to fix.
 
+All libraries should be compiled as static libraries using the -static flag or an available flag.
+
 Freetype GL must be built with -DGLEW_STATIC flag and with USE_VAO enabled.
 
 ### Windows:
@@ -33,11 +35,15 @@ Install [MSYS2](https://www.msys2.org/) and run this command in the shell to get
 pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-libtool mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-freetype mingw-w64-x86_64-glfw
 ```
 
-You can then use the `mingw32-make` command to compile the required libraries.
+Usually you can create a makefile with cmake and then use the `mingw32-make` command to compile the required libraries.
 
 To build Freetype GL configure cmake so that the FreeType, GLFW, and GLEW paths link to the static mingw64 libraries.
  
 Build SoLoud using the cmake files in the contrib folder and use SOLOUD_BACKEND_WINMM.
+
+HarfBuzz should be compiled using only the freetype, glib, and graphite2 dependencies, and ensure GRAPHITE2_STATIC is defined.
+
+Also make sure the freetype, glib, and graphite2 paths point to the static mingw64 library files and not the .dll.a files.
 
 ## NOTE:
 
