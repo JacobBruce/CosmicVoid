@@ -30,13 +30,13 @@ public:
     bool CalcBounds(const float cam_foclen, const float& max_radius, const DVec3& position, uint4& result);
 
 private:
+	float4      gl_fill_clr;
 	GLuint		gl_fb_id;
 	GLuint		gl_rb_id;
 	GLuint		gl_sb_id;
 	GLuint      gl_rtx_id;
 	GLuint		gl_tex_id;
 	GLenum		gl_status;
-	cl_int		cl_error;
 	cl_context	cl_con;
 	std::vector<cl::Memory> gl_memSet;
 

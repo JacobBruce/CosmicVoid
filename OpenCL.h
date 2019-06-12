@@ -111,7 +111,7 @@ public:
 		// build kernel program and check for errors
 		std::cout << "Building OpenCL kernels ... ";
 		try {
-            if (program.build(gpu_devices) != CL_SUCCESS) {
+            if (program.build(gpu_devices, "-cl-std=CL1.2") != CL_SUCCESS) {
                 std::cout << "Failed!\n";
                 CLBLog("Build log: "+program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device));
                 HandleFatalError(33, "Failed building kernel program.");

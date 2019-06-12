@@ -49,7 +49,8 @@
 
 #define CL_LOGGING		1
 #define CL_COMPLOG		1
-#define GL_SHOW_ERRORS  1
+#define GL_DEBUG        0
+#define CL_DEBUG        0
 
 #define FONT_CONTHRAX   0
 #define FONT_OXANIUM    1

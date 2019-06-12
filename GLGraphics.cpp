@@ -2,6 +2,9 @@
 
 void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
 {
+    cl_int cl_errors[2];
+    gl_fill_clr = {0.0f, 0.0f, 0.0f, 1.0f};
+
     // Initialize OpenGL
     openGL.Initialize();
 
@@ -21,18 +24,24 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
 
     glBindFramebuffer(GL_FRAMEBUFFER, gl_fb_id);
     glBindRenderbuffer(GL_RENDERBUFFER, gl_rb_id);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA, windowWidth, windowHeight);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA32F, windowWidth, windowHeight);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, gl_rb_id);
 
     glBindTexture(GL_TEXTURE_2D, gl_rtx_id);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, NULL);
+    glClearTexSubImage(gl_rtx_id, 0, 0, 0, 0, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
 
     glBindTexture(GL_TEXTURE_2D, gl_tex_id);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, NULL);
+    glClearTexSubImage(gl_tex_id, 0, 0, 0, 0, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gl_tex_id, 0);
 
     gl_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -41,14 +50,17 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
         GLFW::error_exit(window);
     }
 
-    gl_memSet.push_back(cl::Memory(clCreateFromGLTexture(cl_con, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, gl_tex_id, &cl_error)));
-    gl_memSet.push_back(cl::Memory(clCreateFromGLTexture(cl_con, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, gl_rtx_id, &cl_error)));
+    gl_memSet.push_back(cl::Memory(clCreateFromGLTexture(cl_con, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, gl_tex_id, &cl_errors[0])));
+    gl_memSet.push_back(cl::Memory(clCreateFromGLTexture(cl_con, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, gl_rtx_id, &cl_errors[1])));
     //gl_memSet.push_back(cl::Memory(clCreateFromGLBuffer(cl_con, CL_MEM_READ_WRITE, openGL.StarBuffer(), &cl_error)));
 
-    if (cl_error != CL_SUCCESS)
-    {
-        PrintLine("[OpenCL Error]: Failed to get OpenGL framebuffer reference!");
-        GLFW::error_exit(window);
+    for (uint32_t i=0; i < gl_memSet.size(); ++i) {
+        if (cl_errors[i] != CL_SUCCESS)
+        {
+            PrintLine("[OpenCL Error] ("+VarToStr(cl_errors[i])+
+                      "): Failed to get OpenGL memory reference ("+VarToStr(i)+")");
+            GLFW::error_exit(window);
+        }
     }
 
     gl_sb_id = openGL.SpriteBuffer();
@@ -57,7 +69,7 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    glClearColor(0.0, 0.0, 0.0, 1.0);
+    glClearColor(gl_fill_clr.x, gl_fill_clr.y, gl_fill_clr.z, 1.0);
     glActiveTexture(GL_TEXTURE0);
     glFinish();
 
@@ -89,12 +101,30 @@ void GLGraphics::ToggleCursorLock()
 void GLGraphics::AcquireGLBuffers(CL& openCL)
 {
     glFinish();
-    openCL.queue.enqueueAcquireGLObjects(&gl_memSet);
+    #if CL_DEBUG
+    try {
+    #endif
+        openCL.queue.enqueueAcquireGLObjects(&gl_memSet);
+    #if CL_DEBUG
+    } catch (cl::Error& e) {
+        PrintLine("[OpenCL Error] ("+VarToStr(e.err())+"): "+e.what());
+        exit(EXIT_FAILURE);
+    }
+    #endif
 }
 
 void GLGraphics::ReleaseGLBuffers(CL& openCL)
 {
+    #if CL_DEBUG
+    try {
+    #endif
     openCL.queue.enqueueReleaseGLObjects(&gl_memSet);
+    #if CL_DEBUG
+    } catch (cl::Error& e) {
+        PrintLine("[OpenCL Error] ("+VarToStr(e.err())+"): "+e.what());
+        exit(EXIT_FAILURE);
+    }
+    #endif
     openCL.queue.finish();
 }
 
@@ -166,7 +196,7 @@ void GLGraphics::SpriteConfig(cl_float4 color, cl_float2 position, float scale, 
     static cl_SpriteData data;
     data = { color, position, scale, rotation, depth };
     glNamedBufferSubData(gl_sb_id, 0, sizeof(cl_SpriteData), &data);
-    #if GL_SHOW_ERRORS
+    #if GL_DEBUG
     if (GL::PrintErrors()) {
         PrintLine("Bad function: GLGraphics::SpriteConfig()");
         exit(EXIT_FAILURE);
@@ -178,7 +208,7 @@ void GLGraphics::SpriteConfig(cl_float4 color, cl_float2 position, float scale, 
 void GLGraphics::DrawInstances(GLuint instance_count, GLuint vertex_count, GLuint offset)
 {
     glDrawArraysInstancedBaseInstance(GL_TRIANGLES, 0, vertex_count, instance_count, offset);
-    #if GL_SHOW_ERRORS
+    #if GL_DEBUG
     if (GL::PrintErrors()) {
         PrintLine("Bad function: GLGraphics::DrawInstances()");
         exit(EXIT_FAILURE);
@@ -191,7 +221,7 @@ void GLGraphics::DrawSprite(GLuint vertex_count)
 {
     //glBindVertexArray(vao);
     glDrawArrays(GL_TRIANGLES, 0, vertex_count);
-    #if GL_SHOW_ERRORS
+    #if GL_DEBUG
     if (GL::PrintErrors()) {
         PrintLine("Bad function: GLGraphics::DrawSprite()");
         exit(EXIT_FAILURE);
@@ -203,7 +233,7 @@ void GLGraphics::DrawSprite(GLuint vertex_count)
 void GLGraphics::DrawText(const FreetypeGlText& text)
 {
     openGL.RenderText(text);
-    #if GL_SHOW_ERRORS
+    #if GL_DEBUG
     if (GL::PrintErrors()) {
         PrintLine("Bad function: GLGraphics::DrawText()");
         exit(EXIT_FAILURE);
@@ -214,7 +244,7 @@ void GLGraphics::DrawText(const FreetypeGlText& text)
 void GLGraphics::DrawText(const std::string& text, const glm::vec2& pos)
 {
     openGL.RenderText(text, pos);
-    #if GL_SHOW_ERRORS
+    #if GL_DEBUG
     if (GL::PrintErrors()) {
         PrintLine("Bad function: GLGraphics::DrawText()");
         exit(EXIT_FAILURE);

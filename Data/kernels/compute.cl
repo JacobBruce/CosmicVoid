@@ -1458,14 +1458,14 @@ __global volatile uint* min_dist, __global int* planet_found, __global float2* m
 	if (sDist > 0.0) {
 		fltInt = sDist * 0.0001;
 		atomic_min(min_dist, fltInt);
-		barrier(CLK_GLOBAL_MEM_FENCE);
+		//barrier(CLK_GLOBAL_MEM_FENCE);
 		if (*min_dist == fltInt) {
 			planet_found[0] = planet_index;
 		}
 		return;
 	}
 	
-	barrier(CLK_GLOBAL_MEM_FENCE);
+	//barrier(CLK_GLOBAL_MEM_FENCE);
 	
 	uint moon_index;
 	uint mstart = planet_index * MAX_MOONS;
@@ -1514,7 +1514,7 @@ __global int* star_found, __global float2* mouse_pos, const RenderInfo render_in
 
 		if (p_dist < s_prad+5.0f) {
 			atomic_min(min_dist, fltInt);
-			barrier(CLK_GLOBAL_MEM_FENCE);
+			//barrier(CLK_GLOBAL_MEM_FENCE);
 			if (*min_dist == fltInt) {
 				*star_found = zone_index;
 			}
