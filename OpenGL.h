@@ -39,40 +39,46 @@ protected:
     GLuint starVAO;
     GLuint spriteVAO;
     GLuint frameVAO;
+    GLuint skyboxVAO;
     GLuint quadVBO;
+    GLuint skyboxVBO;
     GLuint starIBO;
     GLuint spriteIBO;
     GLuint starShaderProg;
     GLuint spriteShaderProg;
     GLuint frameShaderProg;
+    GLuint volgasShaderProg;
     GLuint flareShaderProg;
+    GLuint skyboxShaderProg;
     GLuint starFragShader;
     GLuint spriteFragShader;
     GLuint frameFragShader;
+    GLuint skyboxFragShader;
+    GLuint volgasFragShader;
     GLuint flareFragShader;
     GLuint starVertShader;
     GLuint spriteVertShader;
     GLuint frameVertShader;
+    GLuint skyboxVertShader;
+    GLuint volgasVertShader;
     GLuint flareVertShader;
     GLuint activeShader;
 
-    GLuint lcid = 1;
-    GLuint lpid = 2;
-    GLuint luid = 3;
-    GLuint arid = 4;
-    GLuint itid = 5;
-    GLuint dfid = 6;
-    GLuint tfid = 7;
-    GLuint faid = 8;
+    GLuint lcid, lpid, luid,
+    arid, itid, dfid, tfid,
+    faid, vpid, gcid, rsid,
+    roid, gvid, cfid, crid, cuid;
 
     std::vector<GLuint> textures;
     std::vector<GLuint> freeTexSlots;
-    glm::mat4 orthoProj;
-    glm::mat4 perspProj;
 
     ftgl::FreetypeGl textRenderer;
 
 public:
+
+    glm::mat4 orthoProj;
+    glm::mat4 perspProj;
+    glm::mat4 mvp;
 
     GL() : textRenderer(true) {}
 
@@ -83,22 +89,31 @@ public:
         glDeleteProgram(starShaderProg);
         glDeleteProgram(spriteShaderProg);
         glDeleteProgram(frameShaderProg);
+        glDeleteProgram(volgasShaderProg);
         glDeleteProgram(flareShaderProg);
+        glDeleteProgram(skyboxShaderProg);
         glDeleteShader(starFragShader);
         glDeleteShader(spriteFragShader);
         glDeleteShader(frameFragShader);
+        glDeleteShader(volgasFragShader);
         glDeleteShader(flareFragShader);
+        glDeleteShader(skyboxFragShader);
         glDeleteShader(starVertShader);
         glDeleteShader(spriteVertShader);
         glDeleteShader(frameVertShader);
+        glDeleteShader(volgasVertShader);
+        glDeleteShader(flareVertShader);
+        glDeleteShader(skyboxVertShader);
 
         glDeleteBuffers(1, &starIBO);
         glDeleteBuffers(1, &spriteIBO);
         glDeleteBuffers(1, &quadVBO);
+        glDeleteBuffers(1, &skyboxVBO);
 
         glDeleteVertexArrays(1, &starVAO);
         glDeleteVertexArrays(1, &spriteVAO);
         glDeleteVertexArrays(1, &frameVAO);
+        glDeleteVertexArrays(1, &skyboxVAO);
     }
 
     static const GLfloat* QuadVertices()
@@ -112,6 +127,55 @@ public:
              1.0f, -1.0f, 1.0f, 0.0f, // Bottom-right
             -1.0f, -1.0f, 0.0f, 0.0f, // Bottom-left
             -1.0f,  1.0f, 0.0f, 1.0f  // Top-left
+        };
+
+        return vertices;
+    }
+    static const GLfloat* SkyboxVertices()
+    {
+        static const GLfloat vertices[] = {
+            // positions
+            -1.0f,  1.0f, -1.0f,
+            -1.0f, -1.0f, -1.0f,
+             1.0f, -1.0f, -1.0f,
+             1.0f, -1.0f, -1.0f,
+             1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+
+            -1.0f, -1.0f,  1.0f,
+            -1.0f, -1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f,  1.0f,
+            -1.0f, -1.0f,  1.0f,
+
+             1.0f, -1.0f, -1.0f,
+             1.0f, -1.0f,  1.0f,
+             1.0f,  1.0f,  1.0f,
+             1.0f,  1.0f,  1.0f,
+             1.0f,  1.0f, -1.0f,
+             1.0f, -1.0f, -1.0f,
+
+            -1.0f, -1.0f,  1.0f,
+            -1.0f,  1.0f,  1.0f,
+             1.0f,  1.0f,  1.0f,
+             1.0f,  1.0f,  1.0f,
+             1.0f, -1.0f,  1.0f,
+            -1.0f, -1.0f,  1.0f,
+
+            -1.0f,  1.0f, -1.0f,
+             1.0f,  1.0f, -1.0f,
+             1.0f,  1.0f,  1.0f,
+             1.0f,  1.0f,  1.0f,
+            -1.0f,  1.0f,  1.0f,
+            -1.0f,  1.0f, -1.0f,
+
+            -1.0f, -1.0f, -1.0f,
+            -1.0f, -1.0f,  1.0f,
+             1.0f, -1.0f, -1.0f,
+             1.0f, -1.0f, -1.0f,
+            -1.0f, -1.0f,  1.0f,
+             1.0f, -1.0f,  1.0f
         };
 
         return vertices;
@@ -154,6 +218,19 @@ public:
         glVertexAttribDivisor(3, 1);
         glVertexAttribDivisor(4, 1);
         glVertexAttribDivisor(5, 1);
+
+        // Create VAO for skybox
+        glGenVertexArrays(1, &skyboxVAO);
+        glBindVertexArray(skyboxVAO);
+
+        // Create a VBO for skybox
+        glGenBuffers(1, &skyboxVBO);
+        glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+        glBufferData(GL_ARRAY_BUFFER, 3 * 36 * sizeof(GLfloat), SkyboxVertices(), GL_STATIC_DRAW);
+
+        // Specify layout of skybox vertices
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
     }
 
     void SetupSpriteBuffers()
@@ -218,8 +295,14 @@ public:
         // Read sprite shader source files
         ShaderSource frameShadersSrc("./Data/shaders/frame.vs", "./Data/shaders/frame.fs");
 
+        // Read space gas shader source files
+        ShaderSource volgasShadersSrc("./Data/shaders/volgas.vs", "./Data/shaders/volgas.fs");
+
         // Read sprite shader source files
         ShaderSource flareShadersSrc("./Data/shaders/flare.vs", "./Data/shaders/flare.fs");
+
+        // Read skybox shader source files
+        ShaderSource skyboxShadersSrc("./Data/shaders/skybox.vs", "./Data/shaders/skybox.fs");
 
         // Create and compile the vertex shaders
         starVertShader = glCreateShader(GL_VERTEX_SHADER);
@@ -237,10 +320,20 @@ public:
         glCompileShader(frameVertShader);
         CheckCompileStatus(frameVertShader, VERTEX_SHADER);
 
+        volgasVertShader = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(volgasVertShader, 1, volgasShadersSrc.GetGLPtr(VERTEX_SHADER), nullptr);
+        glCompileShader(volgasVertShader);
+        CheckCompileStatus(volgasVertShader, VERTEX_SHADER);
+
         flareVertShader = glCreateShader(GL_VERTEX_SHADER);
         glShaderSource(flareVertShader, 1, flareShadersSrc.GetGLPtr(VERTEX_SHADER), nullptr);
         glCompileShader(flareVertShader);
         CheckCompileStatus(flareVertShader, VERTEX_SHADER);
+
+        skyboxVertShader = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(skyboxVertShader, 1, skyboxShadersSrc.GetGLPtr(VERTEX_SHADER), nullptr);
+        glCompileShader(skyboxVertShader);
+        CheckCompileStatus(skyboxVertShader, VERTEX_SHADER);
 
         // Create and compile the fragment shaders
         starFragShader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -258,10 +351,20 @@ public:
         glCompileShader(frameFragShader);
         CheckCompileStatus(frameFragShader, FRAGMENT_SHADER);
 
+        volgasFragShader = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(volgasFragShader, 1, volgasShadersSrc.GetGLPtr(FRAGMENT_SHADER), nullptr);
+        glCompileShader(volgasFragShader);
+        CheckCompileStatus(volgasFragShader, FRAGMENT_SHADER);
+
         flareFragShader = glCreateShader(GL_FRAGMENT_SHADER);
         glShaderSource(flareFragShader, 1, flareShadersSrc.GetGLPtr(FRAGMENT_SHADER), nullptr);
         glCompileShader(flareFragShader);
         CheckCompileStatus(flareFragShader, FRAGMENT_SHADER);
+
+        skyboxFragShader = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(skyboxFragShader, 1, skyboxShadersSrc.GetGLPtr(FRAGMENT_SHADER), nullptr);
+        glCompileShader(skyboxFragShader);
+        CheckCompileStatus(skyboxFragShader, FRAGMENT_SHADER);
 
         // Attach shaders to shader programs
         starShaderProg = glCreateProgram();
@@ -279,10 +382,20 @@ public:
         glAttachShader(frameShaderProg, frameFragShader);
         glBindFragDataLocation(frameShaderProg, 0, "outColor");
 
+        volgasShaderProg = glCreateProgram();
+        glAttachShader(volgasShaderProg, volgasVertShader);
+        glAttachShader(volgasShaderProg, volgasFragShader);
+        glBindFragDataLocation(volgasShaderProg, 0, "outColor");
+
         flareShaderProg = glCreateProgram();
         glAttachShader(flareShaderProg, flareVertShader);
         glAttachShader(flareShaderProg, flareFragShader);
         glBindFragDataLocation(flareShaderProg, 0, "outColor");
+
+        skyboxShaderProg = glCreateProgram();
+        glAttachShader(skyboxShaderProg, skyboxVertShader);
+        glAttachShader(skyboxShaderProg, skyboxFragShader);
+        glBindFragDataLocation(skyboxShaderProg, 0, "outColor");
 
         // Link the shaders into shader programs
         glLinkProgram(starShaderProg);
@@ -300,22 +413,47 @@ public:
         glValidateProgram(frameShaderProg);
         CheckProgramStatus(frameShaderProg, GL_VALIDATE_STATUS);
 
+        glLinkProgram(volgasShaderProg);
+        CheckProgramStatus(volgasShaderProg, GL_LINK_STATUS);
+        glValidateProgram(volgasShaderProg);
+        CheckProgramStatus(volgasShaderProg, GL_VALIDATE_STATUS);
+
         glLinkProgram(flareShaderProg);
         CheckProgramStatus(flareShaderProg, GL_LINK_STATUS);
         glValidateProgram(flareShaderProg);
         CheckProgramStatus(flareShaderProg, GL_VALIDATE_STATUS);
 
+        glLinkProgram(skyboxShaderProg);
+        CheckProgramStatus(skyboxShaderProg, GL_LINK_STATUS);
+        glValidateProgram(skyboxShaderProg);
+        CheckProgramStatus(skyboxShaderProg, GL_VALIDATE_STATUS);
+
         // Setup shader texture sampler uniforms
-        BindShader(starShaderProg);
+        glUseProgram(starShaderProg);
         glUniform1i(glGetUniformLocation(starShaderProg, "texSmplr"), 0);
 
         glUseProgram(spriteShaderProg);
         glUniform1i(glGetUniformLocation(spriteShaderProg, "texSmplr"), 0);
 
-        BindShader(frameShaderProg);
+        glUseProgram(frameShaderProg);
         glUniform1i(glGetUniformLocation(frameShaderProg, "texSmplr"), 0);
 
-        BindShader(flareShaderProg);
+        glUseProgram(skyboxShaderProg);
+        glUniform1i(glGetUniformLocation(skyboxShaderProg, "texSmplr"), 0);
+        vpid = glGetUniformLocation(skyboxShaderProg, "mvp");
+
+        glUseProgram(volgasShaderProg);
+        glUniform1i(glGetUniformLocation(volgasShaderProg, "frameTex"), 0);
+        glUniform1i(glGetUniformLocation(volgasShaderProg, "depthTex"), 1);
+        roid = glGetUniformLocation(volgasShaderProg, "rayOrigin");
+        gvid = glGetUniformLocation(volgasShaderProg, "gasVis");
+        gcid = glGetUniformLocation(volgasShaderProg, "gasColor");
+        rsid = glGetUniformLocation(volgasShaderProg, "resolution");
+        cfid = glGetUniformLocation(volgasShaderProg, "camForward");
+        crid = glGetUniformLocation(volgasShaderProg, "camRight");
+        cuid = glGetUniformLocation(volgasShaderProg, "camUp");
+
+        glUseProgram(flareShaderProg);
         lcid = glGetUniformLocation(flareShaderProg, "lightColor");
         lpid = glGetUniformLocation(flareShaderProg, "lightPos");
         luid = glGetUniformLocation(flareShaderProg, "luminosity");
@@ -371,15 +509,52 @@ public:
         freeTexSlots.push_back(index);
     }
 
+    GLuint GetTextureID(const GLuint index) const
+    {
+        return textures[index];
+    }
+
+    GLuint LoadCubemap(std::vector<std::string> faces)
+    {
+        GLuint textureID;
+
+        glGenTextures(1, &textureID);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+
+        for (uint32_t i = 0; i < faces.size(); i++)
+        {
+            SoilImage cmFace;
+            if (SoilPP::ReadImageFile(faces[i], cmFace)) {
+                glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                             0, GL_RGBA, cmFace.width, cmFace.height,
+                             0, GL_RGBA, GL_UNSIGNED_BYTE, cmFace.bytes);
+                cmFace.Free();
+            } else {
+                PrintLine("Failed to load cubemap texture: " + faces[i]);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+        return textureID;
+    }
+
+    void UpdateMVP(const glm::mat4& view /*const glm::mat4& model*/)
+    {
+        mvp = perspProj * view;// * model;
+    }
+
     void SetProjMatrix(const GLint& window_width, const GLint& window_height, const GLfloat fov=0.0f)
     {
         assert(window_width > 0 && window_height > 0);
-        if (fov > 0.0) {
+        if (fov > 0.0f) {
             // Create 3D projection matrix
-            perspProj = glm::perspective(glm::radians(fov), (float)window_width/(float)window_height, -1.0f, 1.0f);
-            // Give projection matrix to shader
-            glUseProgram(spriteShaderProg);
-            glUniformMatrix4fv(glGetUniformLocation(spriteShaderProg, "projection"), 1, GL_FALSE, &perspProj[0][0]);
+            perspProj = glm::perspective(fov, (float)window_width/(float)window_height, 0.1f, 100000.0f);
         } else {
             // Create 2D projection matrix
             orthoProj = glm::ortho(0.0f, (GLfloat)window_width, 0.0f, (GLfloat)window_height, -1.0f, 1.0f);
@@ -431,8 +606,11 @@ public:
 
     inline void InitStarRender()
     {
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
         glBindVertexArray(starVAO);
         BindShader(starShaderProg);
+        glClear(GL_DEPTH_BUFFER_BIT);
     }
 
     inline void InitSpriteRender()
@@ -446,6 +624,31 @@ public:
     {
         glBindVertexArray(frameVAO);
         BindShader(frameShaderProg);
+    }
+
+    inline void InitSkyboxRender(const GLuint cubemap_tex)
+    {
+        glDepthMask(GL_FALSE);
+        glDisable(GL_DEPTH_TEST);
+        glBindVertexArray(skyboxVAO);
+        BindShader(skyboxShaderProg);
+        glUniformMatrix4fv(vpid, 1, GL_FALSE, &mvp[0][0]);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemap_tex);
+    }
+
+    inline void InitVolGasRender(const glm::vec3& color, const glm::vec3& res, const glm::vec3& ray_orig,
+                                 const glm::vec3& cf, const glm::vec3& cr, const glm::vec3& cu, float gas_vis)
+    {
+        glDepthMask(GL_FALSE);
+        glBindVertexArray(frameVAO);
+        BindShader(volgasShaderProg);
+        glUniform1f(gvid, gas_vis);
+        glUniform3f(roid, ray_orig.x, ray_orig.y, ray_orig.z);
+        glUniform3f(gcid, color.x, color.y, color.z);
+        glUniform3f(rsid, res.x, res.y, res.z);
+        glUniform3f(cfid, cf.x, cf.y, cf.z);
+        glUniform3f(crid, cr.x, cr.y, cr.z);
+        glUniform3f(cuid, cu.x, cu.y, cu.z);
     }
 
     inline void InitFlareRender(const float3& color, const float2& pos, float lumi, float aratio,
@@ -487,6 +690,8 @@ public:
     const Markup& DefaultMarkup() const { return textRenderer.default_markup; }
 
     const GLuint& QuadBuffer() const { return quadVBO; }
+
+    const GLuint& SkyboxBuffer() const { return skyboxVBO; }
 
     const GLuint& StarBuffer() const { return starIBO; }
 

@@ -32,8 +32,6 @@ public:
 	cl::Kernel PP_Kernel;
 	cl::Kernel FB_Kernel;
 	cl::Kernel FF_Kernel;
-	cl::Kernel RFB_Kernel;
-	cl::Kernel RFF_Kernel;
 	uint32_t max_wg_size;
 
 public:
@@ -136,8 +134,6 @@ public:
 		PP_Kernel = cl::Kernel(program, "MousePickPlanet");
 		FB_Kernel = cl::Kernel(program, "FillFragBuff");
 		FF_Kernel = cl::Kernel(program, "FragsToFrame");
-		RFB_Kernel = cl::Kernel(program, "FillFragBuffRT");
-		RFF_Kernel = cl::Kernel(program, "FragsToFrameRT");
 
 		// create queue to which we will push commands for the device
 		queue = cl::CommandQueue(context, device);
@@ -153,7 +149,6 @@ public:
 	{
 		std::string device_name = device.getInfo<CL_DEVICE_NAME>();
 		std::string device_vendor = device.getInfo<CL_DEVICE_VENDOR>();
-		device_name.pop_back(); device_vendor.pop_back();
 
 		std::cout << "\nUsing platform: "+platform.getInfo<CL_PLATFORM_NAME>() + "\n";
 		std::cout << "Using device: "+device_name+" ("+device_vendor+")\n";
@@ -214,15 +209,5 @@ public:
 	void FragsToFrame(cl_uint ww, cl_uint wh)
 	{
 		queue.enqueueNDRangeKernel(FF_Kernel, cl::NullRange, cl::NDRange(ww, wh));
-	}
-
-	void FillFragBuffRT(cl_uint ww, cl_uint wh)
-	{
-		queue.enqueueNDRangeKernel(RFB_Kernel, cl::NullRange, cl::NDRange(ww, wh));
-	}
-
-	void FragsToFrameRT(cl_uint ww, cl_uint wh)
-	{
-		queue.enqueueNDRangeKernel(RFF_Kernel, cl::NullRange, cl::NDRange(ww, wh));
 	}
 };

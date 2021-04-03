@@ -12,9 +12,11 @@
 #define ZONE_SPLIT  (double)2.5e15
 #define ALMOST_TWO  (float)1.999999
 #define NOISE_MAX   (uchar)6
+#define PI			3.141592653589793
 #define PI_MUL_4o3  4.18879020478639
 #define PI_MUL_4    12.5663706143591
 #define PI_MUL_2    6.28318530717958
+#define PI_HALF		1.57079632679489
 #define ONE_AU      149597870700.0
 #define G           6.674e-11
 
@@ -49,16 +51,19 @@
 #define BLUE_RGB    40,140,245
 #define LBLUE_RGB   240,245,252
 #define BLACK_RGB   0,0,0
-#define VOLC_RGB    216,216,82
-#define LAVA_RGB    170,98,10
-#define ICE_RGB     176,228,232
-#define WATER_RGB   110,180,210
-#define EARTH_RGB   202,218,224
-#define ROCK_RGB    200,200,200
+#define VOLC_RGB    117,101,45
+#define LAVA_RGB    158,98,25
+#define ICE_RGB     237,245,247
+#define WATER_RGB   37,118,153
+#define DWATER_RGB  23,64,115
+#define DIRT_RGB	97,95,54
+#define EARTH_RGB   90,117,59
+#define ROCK_RGB    129,138,117
+#define SAND_RGB	239,240,223
 #define GAS_RGB     202,208,162
 #define IRON_RGB    150,124,20
 #define CARBON_RGB  60,48,30
-#define DESERT_RGB  168,108,48
+#define DESERT_RGB  155,150,80
 #define SILIC_RGB   152,158,160
 
 #define STAR_MAG 10.0f
@@ -71,6 +76,9 @@
 #define STAR_TEX_RATIO 4.0f
 #define STAR_LIGHT_POW 0.001f
 #define ISL_DIST_MULT 0.00000005
+#define MAX_ORBIT_TILT 0.25
+#define MIN_ROT_TIME 10000
+#define MAX_ROT_TIME 5000000
 #define IBUFF_OFFSET 999
 #define MAX_MILL_SPECIES 20
 
@@ -89,8 +97,8 @@ __constant float4 moonDiffData[4] = {
 //specular rgb, roughness
 __constant float4 moonSpecData[4] = {
 	(float4)(0.1f,0.1f,0.1f, 90.0f),
-	(float4)(0.9f,0.9f,0.9f, 60.0f),
-	(float4)(0.8f,0.8f,0.8f, 70.0f),
+	(float4)(0.7f,0.7f,0.7f, 60.0f),
+	(float4)(0.5f,0.5f,0.5f, 70.0f),
 	(float4)(0.2f,0.2f,0.2f, 80.0f)
 };
 
@@ -115,15 +123,15 @@ __constant float4 planetSpecData[12] = {
 	(float4)(0.2f,0.2f,0.2f, 80.0f),
 	(float4)(0.1f,0.1f,0.1f, 95.0f),
 	(float4)(0.1f,0.1f,0.1f, 95.0f),
-	(float4)(0.9f,0.9f,0.9f, 60.0f),
-	(float4)(0.9f,0.9f,0.9f, 60.0f),
-	(float4)(0.8f,0.8f,0.8f, 70.0f),
+	(float4)(0.7f,0.7f,0.7f, 60.0f),
+	(float4)(0.7f,0.7f,0.7f, 60.0f),
+	(float4)(0.5f,0.5f,0.5f, 70.0f),
 	(float4)(0.3f,0.3f,0.3f, 85.0f),
 	(float4)(0.1f,0.1f,0.1f, 90.0f),
 	(float4)(0.2f,0.2f,0.2f, 80.0f),
 	(float4)(0.05f,0.05f,0.05f, 90.0f),
 	(float4)(0.01f,0.01f,0.01f, 99.0f),
-	(float4)(0.5f,0.5f,0.5f, 75.0f)
+	(float4)(0.4f,0.4f,0.4f, 75.0f)
 };
 
 __constant uchar4 moonAvgColors[4] = {
@@ -422,7 +430,7 @@ typedef struct {
 	float radius;
 	float density;
 	float volume;
-	float area;
+	float rot_time;
 	float temp;
 	RGB32 color;
 } Star;
@@ -448,7 +456,7 @@ typedef struct {
 			};
         };
     };
-	float3 orbit;
+	float2 orbit;
 	float mass;
 	float radius;
 	float density;
@@ -461,6 +469,9 @@ typedef struct {
 	float orbit_rad;
 	float eccentricity;
 	float velocity;
+	float atmos_dens;
+	short atmos_dist;
+	short atmos_type;
 } Planet;
 
 typedef struct {
@@ -484,7 +495,7 @@ typedef struct {
 			};
         };
     };
-	float3 orbit;
+	float2 orbit;
 	float mass;
 	float radius;
 	float density;
@@ -497,10 +508,13 @@ typedef struct {
 	float orbit_rad;
 	float eccentricity;
 	float velocity;
+	float atmos_dens;
+	short atmos_dist;
+	short atmos_type;
 } Moon;
 
 typedef struct {
-	double3 plane;
+	double2 plane;
 	ulong index;
 	uint conflict;
 	uint economy;
@@ -508,6 +522,10 @@ typedef struct {
 	uint civ_count;
 	uint moons;
 	uint planets;
+	uint stations;
+	uint artifacts; //abandoned/destroyed ships, stations, planets
+	uint anomalies; //workmholes, dyson spheres, artificial planets
+	uint secrets; //alien space objects/structures
 } SolarSystem;
 
 #pragma pack(pop)
@@ -524,7 +542,10 @@ float Dist2D(const float2 v1, const float2 v2)
 {
 	return sqrt(Sqrd2D(v1, v2));
 }
-
+float3 VectMin(const float3 v)
+{
+	return (float3)(fmin(v.x,1.0f), fmin(v.y,1.0f), fmin(v.z,1.0f));
+}
 double VectMag(const double3 v)
 {
 	return sqrt((v.x*v.x) + (v.y*v.y) + (v.z*v.z));
@@ -555,6 +576,10 @@ double3 VectRot(const double3 v, const double3 rot)
 	result = VectRotZ(result, rot.z);
 	return VectRotX(result, rot.x);
 }
+double3 OrbitRot(const double rad, const double angle)
+{
+	return (double3)(cos(angle), 0.0, -sin(angle)) * rad;
+}
 double3 VectFloor(const double3 v)
 {
 	return (double3)(floor(v.x), floor(v.y), floor(v.z));
@@ -579,12 +604,13 @@ RGB32 AlphaBlend(const RGB32 c1, const RGB32 c2)
 	result.red = (c2.red * c2.alpha + c1.red * invAlpha) >> 8;
 	result.green = (c2.green * c2.alpha + c1.green * invAlpha) >> 8;
 	result.blue = (c2.blue * c2.alpha + c1.blue * invAlpha) >> 8;
+	result.alpha = 255;
 	return result;
 }
 
-float4 NormalizeColor(const float3 v, const float a)
+float4 NormalizeColor(const float4 v)
 {
-	return (float4)(v / 255.0f, a);
+	return v / 255.0f;
 }
 
 float3 ColorToVec3(const RGB32 c)
@@ -597,19 +623,48 @@ float4 ColorToVec4(const RGB32 c)
 	return (float4)(c.red/255.0f, c.green/255.0f, c.blue/255.0f, c.alpha/255.0f);
 }
 
+RGB32 Vec3ToColor(float3 v)
+{
+	RGB32 result;
+	result.rgba = (uchar4)((uchar)round(v.x*255.0f), 
+				  (uchar)round(v.y*255.0f), (uchar)round(v.z*255.0f), 255);
+	return result;
+}
+
+RGB32 Vec4ToColor(float4 v)
+{
+	RGB32 result;
+	result.rgba = (uchar4)((uchar)round(v.x*255.0f), 
+				  (uchar)round(v.y*255.0f), 
+				  (uchar)round(v.z*255.0f),
+				  (uchar)round(v.w*255.0f));
+	return result;
+}
+
 RGB32 ScaleColor(RGB32 color, float g_frac)
 {
 	color.red = round(fmin(color.red * g_frac, 255.0f));
 	color.green = round(fmin(color.green * g_frac, 255.0f));
 	color.blue = round(fmin(color.blue * g_frac, 255.0f));
+	color.alpha = round(fmin(color.alpha * g_frac, 255.0f));
 	return color;
 }
 
-RGB32 ColorMultiplyV(uchar4 c, float3 v) 
+RGB32 ColorMultiplyV3(uchar4 c, float3 v) 
 {
-	RGB32 result = {(uchar)min(c.x*v.x, 255.0f), 
-					(uchar)min(c.y*v.y, 255.0f),
-					(uchar)min(c.z*v.z, 255.0f), 255};
+	RGB32 result;
+	result.rgba = (uchar4)((uchar)min(c.x*v.x, 255.0f), 
+				  (uchar)min(c.y*v.y, 255.0f),
+				  (uchar)min(c.z*v.z, 255.0f), 255);
+	return result;
+}
+
+RGB32 ColorMultiplyV4(uchar4 c, float4 v) 
+{
+	RGB32 result;
+	result.rgba = (uchar4)((uchar)min(c.x*v.x, 255.0f), 
+				  (uchar)min(c.y*v.y, 255.0f),
+				  (uchar)min(c.z*v.z, 255.0f), 255);
 	return result;
 }
 
@@ -641,19 +696,20 @@ double RaySphereIntersect(const double3 orig, const double3 dir, const double3 p
 	return t0;
 }
 
-float3 CalcSurfColor(double3 surf_pnt, double3 norm_vec, double3 cam_pos, double3 light_pos, float3 light_color, float4 diffuse, float4 specular, float light_power)
+float3 CalcSurfLight(double3 point, double3 norm_vec, double3 cam_pos, double3 light_pos, 
+					 float3 light_color, float4 diffuse, float4 specular, float light_power)
 {
 	// get distance between light and planet surface
-	double sDist = distance(surf_pnt, light_pos);
+	double sDist = distance(point, light_pos);
 
 	// get light direction ray relative to surface
-	double3 losVect = normalize(light_pos - surf_pnt);
+	double3 losVect = normalize(light_pos - point);
 
 	// get camera direction ray relative to surface
-	double3 cosVect = normalize(cam_pos - surf_pnt);
+	double3 cosVect = normalize(cam_pos - point);
 
 	// apply Lambertian diffuse reflection to light intensity
-	float dotProd = max(dot(losVect, norm_vec), 0.0);
+	float dotProd = fmax(dot(losVect, norm_vec), 0.0);
 	float3 ltiVect = (light_color * (diffuse.xyz * dotProd)) + diffuse.w;
 
 	// apply Blinn-Phong specular reflection to light intensity
@@ -667,9 +723,21 @@ float3 CalcSurfColor(double3 surf_pnt, double3 norm_vec, double3 cam_pos, double
 	return ltiVect * (float)min(1.0, light_power/pow(sDist, 2.0));
 }
 
+float4 CalcSurfColor(read_only image2d_t texture, double3 norm, double2 rot) {
+
+	//TODO: account for planet rotation and axis shift (up vector should match star)
+	// calculate the texture coordinate for a sphere
+	double u = 0.5 + atan2(norm.z, norm.x) / (2.0*PI);
+	double v = 0.5 - asin(norm.y) / PI;
+	
+	int width = u*get_image_width(texture);
+	int height = v*get_image_height(texture);
+
+	return read_imagef(texture, (int2)(width, height));
+}
 
 double RandDblFromLng(ulong seed) {
-	return ((seed%2) ? 1.0 : -1.0) * ((seed % UINT_MAX) / (UINT_MAX-1.0));
+	return ((seed%2) ? 1.0 : -1.0) * ((double)seed / ULONG_MAX);
 }
 
 ulong RandomLong(ulong seed) {
@@ -774,6 +842,7 @@ __kernel void GenStars(__global Star* star_buffer, const RenderInfo render_info)
 	UCharVec8 starColDat;
 	LongBytes seed;
 	ulong4 seeds;
+	ushort2 starAgeDat;
 	Star star;
 
 	seeds.x = RandomLong(glob_index);
@@ -785,18 +854,23 @@ __kernel void GenStars(__global Star* star_buffer, const RenderInfo render_info)
 	star.type = starTypeProbs[seed.bytes[3]];
 	starStats.data = starTypeStats[star.type];
 	starColDat.data = starAvgColors[star.type];
+	starAgeDat = starAgeLimits[star.type];
 
 	variFrac = RandDblFromLng(seeds.y);
 	sM = starStats.s[MASS_INDEX] + (starStats.s[MVAR_INDEX] * variFrac);
 	variFrac = RandDblFromLng(seeds.z);
 	sR = starStats.s[RADI_INDEX] + (starStats.s[RVAR_INDEX] * variFrac);
 	
-	star.age = starAgeLimits[star.type][0] + (seeds.w % starAgeLimits[star.type][1]);
+	star.age = starAgeDat.x + (seeds.w % starAgeDat.y);
 	star.mass = SOLAR_MASS * sM;
 	star.radius = SOLAR_RADI * sR;
-	star.area = PI_MUL_4 * pow(star.radius, 2.0f);
 	star.volume = PI_MUL_4o3 * pow(star.radius, 3.0f);
 	star.density = star.mass / star.volume;
+	
+	variFrac = fmin(10.0, fmax(0.1, star.mass / SOLAR_MASS));
+	star.rot_time = RandDblFromLng(seeds.w) * MAX_ROT_TIME * variFrac;
+	//TODO: adjust rotation speed based on star type
+	star.rot_time += (star.rot_time < 0.0f) ? -MIN_ROT_TIME : MIN_ROT_TIME;
 
 	denseFrac = sM / sR;
 	maxDF = starStats.s[MAXM_INDEX] / starStats.s[MINR_INDEX];
@@ -804,16 +878,17 @@ __kernel void GenStars(__global Star* star_buffer, const RenderInfo render_info)
 	sT = starStats.s[TEMP_INDEX] + (starStats.s[TVAR_INDEX] * variFrac);
 	star.temp = SOLAR_TEMP * sT;
 	star.luminosity = SOLAR_LUMI * pow(sR,2.0) * pow(sT,4.0);
+
+	seeds.x = RandomLong(seeds.w);
+	seeds.y = RandomLong(seeds.x);
+	seeds.z = RandomLong(seeds.y);
+	seeds.w = RandomLong(seeds.z);
 	
 	seed.data = seeds.w;
 	star.color.red = starColDat.s[0] + (seed.bytes[0] % starColDat.s[3]);
 	star.color.green = starColDat.s[1] + (seed.bytes[1] % starColDat.s[4]);
 	star.color.blue = starColDat.s[2] + (seed.bytes[2] % starColDat.s[5]);
 	star.color.alpha = 255;
-
-	seeds.x = RandomLong(seeds.w);
-	seeds.y = RandomLong(seeds.x);
-	seeds.z = RandomLong(seeds.y);
 	
 	star.position.x = offset_X + ((double)(seeds.x % 16UL) * ZONE_SPLIT);
 	star.position.y = offset_Y + ((double)(seeds.y % 16UL) * ZONE_SPLIT);
@@ -834,8 +909,8 @@ __global Star* star_buffer, __global uint* loaded_star)
 	uchar habitability, life_level, type;
 	
 	double pD, pR;
-	float variFrac, lumiFrac;
-	float frac1, frac2, randFlt;
+	float variFrac, lumiFrac, orbitGap;
+	float frac1, frac2, randFlt, rotNP;
 	uint mindex, mstart;
 	uint sumHostile;
 	FloatVec4 bodyStats;
@@ -845,6 +920,7 @@ __global Star* star_buffer, __global uint* loaded_star)
 	Moon moon;
 	
 	Star star = star_buffer[*loaded_star];
+	rotNP = star.rot_time < 0.0 ? -1.0 : 1.0;
 
 	seeds.x = RandomLong(seed);
 	seeds.y = RandomLong(seeds.x);
@@ -866,23 +942,36 @@ __global Star* star_buffer, __global uint* loaded_star)
 	planet.mass = planet.density * planet.volume;
 	
 	lumiFrac = star.luminosity / SOLAR_LUMI;
-	frac1 = max(planet.mass / EARTH_MASS, 0.3);
-	frac2 = (star.mass / SOLAR_MASS) * 1000.0f;
-	planet.eccentricity = 0.00001 + (fabs(RandDblFromLng(seeds.x)) * ((seeds.x%4) ? 0.01 : 0.49));
-	planet.velocity = 1000.0 + frac2 + (fabs(RandDblFromLng(seeds.w) * 60000.0) / frac1);
-	planet.orbit_rad = G * star.mass / pow(planet.velocity, 2.0f);
+	frac1 = fmax(planet.mass / EARTH_MASS, 0.3);
+	frac2 = star.radius * 1.25f;
+	//frac2 = (star.mass / SOLAR_MASS) * 1000.0f;
+	orbitGap = fmax(frac2, (float)((G * star.mass) / 100000000.0) - frac2) / MAX_PLANETS;
+	planet.orbit_rad = frac2 + (index * orbitGap) + (fabs(RandDblFromLng(seeds.w)) * orbitGap * 0.95f);
+	//planet.orbit_rad = G * star.mass / pow(planet.velocity, 2.0f);
+	
+	seeds.x = RandomLong(seed);
+	seeds.y = RandomLong(seeds.x);
+	seeds.z = RandomLong(seeds.y);
+	seeds.w = RandomLong(seeds.z);
+	
+	planet.eccentricity = 0.00001 + (fabs(RandDblFromLng(seeds.x)) * ((seeds.y%4) ? 0.01 : 0.49));
+	planet.velocity = ((G * star.mass) / planet.orbit_rad) * rotNP;
 	planet.temp = fmax(5.0, lumiFrac * (EARTH_TEMP / pow(planet.orbit_rad / ONE_AU, 2.0)));
-    planet.orbit_time = (PI_MUL_2 * planet.orbit_rad) / planet.velocity;
-	planet.rot_time = 21600.0 + ((seeds.w % 3600000) / frac1);
+    planet.orbit_time = (PI_MUL_2 * planet.orbit_rad) / fabs(planet.velocity);
+	rotNP = RandDblFromLng(seeds.z) > 0.8 ? -rotNP : rotNP;
+	planet.rot_time = (21600.0 + ((seeds.w % 3600000) * frac1)) * rotNP;
 	planet.position.xyz = star.position.xyz;
 	planet.position.x += planet.orbit_rad;
-
+	
 	seeds.x = RandomLong(seeds.w);
 	seeds.y = RandomLong(seeds.x);
 	seeds.z = RandomLong(seeds.y);
 	seeds.w = RandomLong(seeds.z);
+	
+	planet.orbit.x = pow(RandDblFromLng(seeds.x), 2.0) * MAX_ORBIT_TILT;
+	planet.orbit.y = pow(RandDblFromLng(seeds.y), 2.0) * MAX_ORBIT_TILT;
 
-	if (type == 3 && type == 4) {
+	if (type == 3 || type == 4) { // ICE TYPE
 		if (planet.temp > FREEZING_TEMP) {
 			if (planet.temp < BOILING_TEMP) {
 				type = 5;
@@ -892,7 +981,7 @@ __global Star* star_buffer, __global uint* loaded_star)
 		}
 	}
 	
-	if (type == 5) {
+	if (type == 5) { // WATER TYPE
 		if (planet.temp < FREEZING_TEMP) {
 			type = 3;
 		} else if (planet.temp > BOILING_TEMP) {
@@ -900,19 +989,19 @@ __global Star* star_buffer, __global uint* loaded_star)
 		}
 	}
 
-	if (type == 7) {
+	if (type == 7) { // THEORETICAL
 		if (planet.temp > LAVA_MIN_TEMP) {
 			type = 9;
 		} else {
-			type = 10 + (seeds.w%2);
+			type = 10 + (seeds.y%2);
 		}
 	}
 	
-	if (type == 6) {
-		if (planet.temp > FREEZING_TEMP && planet.temp < BOILING_TEMP) {
-			type = 6;
-		} else {
-			type = 7 + (seeds.w%2);
+	if (type == 6) { // EARTH-LIKE
+		if (planet.temp < FREEZING_TEMP) {
+			type = 3;
+		} else if (planet.temp > BOILING_TEMP) {
+			type = 7 + (seeds.y%2);
 		}
 	}
 	
@@ -920,73 +1009,73 @@ __global Star* star_buffer, __global uint* loaded_star)
 	case 0: //Dwarf planet
 		variFrac = 0.1f;
 		planet.water_frac = 0.0001f;
-		planet.temp *= (90 + (seeds.y%20)) / 100.0f;
+		planet.temp *= (90 + (seeds.w%20)) / 100.0f;
 		habitability = 40 + (seeds.z%3);
 		break;
 	case 1: //Gas dwarf
 		variFrac = 0.3f;
 		planet.water_frac = 0.001f;
-		planet.temp *= (80 + (seeds.y%20)) / 100.0f;
+		planet.temp *= (80 + (seeds.w%20)) / 100.0f;
 		habitability = 1 + (seeds.z%3);
 		break;
 	case 2: //Gas giant
 		variFrac = 0.3f;
 		planet.water_frac = 0.001f;
-		planet.temp *= (80 + (seeds.y%20)) / 100.0f;
+		planet.temp *= (80 + (seeds.w%20)) / 100.0f;
 		habitability = 1 + (seeds.z%3);
 		break;
 	case 3: //Ice planet
-		variFrac = 0.5f;
+		variFrac = 0.6f;
 		planet.water_frac = 0.4f;
-		planet.temp *= (80 + (seeds.y%10)) / 100.0f;
+		planet.temp *= (80 + (seeds.w%10)) / 100.0f;
 		habitability = 30 + (seeds.z%3);
 		break;
 	case 4: //Ice giant
-		variFrac = 0.5f;
+		variFrac = 0.6f;
 		planet.water_frac = 0.4f;
-		planet.temp *= (80 + (seeds.y%10)) / 100.0f;
+		planet.temp *= (80 + (seeds.w%10)) / 100.0f;
 		habitability = 30 + (seeds.z%3);
 		break;
 	case 5: //Water planet
-		variFrac = 0.15f;
-		planet.water_frac = 0.8f;
-		planet.temp *= (90 + (seeds.y%10)) / 100.0f;
+		variFrac = 0.1f;
+		planet.water_frac = 0.9f;
+		planet.temp *= (90 + (seeds.w%10)) / 100.0f;
 		habitability = 64 + (seeds.z%3);
 		break;
 	case 6: //Earth-like planet
-		variFrac = 0.4f;
+		variFrac = 0.5f;
 		planet.water_frac = 0.4f;
-		planet.temp *= (98 + (seeds.y%5)) / 100.0f;
+		planet.temp *= (98 + (seeds.w%5)) / 100.0f;
 		habitability = 125 + (seeds.z%3);
 		break;
 	case 7: //Desert planet
 		variFrac = 0.01f;
 		planet.water_frac = 0.00001f;
-		planet.temp *= (100 + (seeds.y%10)) / 100.0f;
+		planet.temp *= (100 + (seeds.w%10)) / 100.0f;
 		habitability = 20 + (seeds.z%3);
 		break;
 	case 8: //Silicate planet
 		variFrac = 0.2f;
 		planet.water_frac = 0.0001f;
-		planet.temp *= (96 + (seeds.y%9)) / 100.0f;
+		planet.temp *= (96 + (seeds.w%9)) / 100.0f;
 		habitability = 50 + (seeds.z%3);
 		break;
 	case 9: //Lava planet
 		variFrac = 0.0001f;
 		planet.water_frac = 0.000001f;
-		planet.temp *= (110 + (seeds.y%10)) / 100.0f;
+		planet.temp *= (110 + (seeds.w%10)) / 100.0f;
 		habitability = 5 + (seeds.z%3);
 		break;
 	case 10: //Carbon planet
 		variFrac = 0.001f;
 		planet.water_frac = 0.00001f;
-		planet.temp *= (100 + (seeds.y%10)) / 100.0f;
+		planet.temp *= (100 + (seeds.w%10)) / 100.0f;
 		habitability = 15 + (seeds.z%3);
 		break;
 	case 11: //Iron planet
 		variFrac = 0.001f;
 		planet.water_frac = 0.00001f;
-		planet.temp *= (90 + (seeds.y%20)) / 100.0f;
+		planet.temp *= (90 + (seeds.w%20)) / 100.0f;
 		habitability = 10 + (seeds.z%3);
 		break;
 	}
@@ -998,20 +1087,22 @@ __global Star* star_buffer, __global uint* loaded_star)
 
 	frac1 = fabs(RandDblFromLng(seeds.x));
 	frac2 = 1.0f - fmin(1.0f, planet.temp/LAVA_MIN_TEMP);
-	planet.water_frac = (frac2 > 0.0) ? planet.water_frac + (frac2 * frac1 * variFrac) : frac1 * planet.water_frac;
+	planet.water_frac = planet.water_frac + (frac2 * frac1 * variFrac);
+	//TODO: account for system star (point in lifecycle, radiation, etc)
 	habitability += (64.0f-(fabs(fmin(2.0f,(planet.temp/EARTH_TEMP))-1.0f)*64.0f)) + fmin(64.0f,planet.water_frac*128.0f);
 	age.data = star.age * (0.8 + fabs(RandDblFromLng(seeds.y) * 0.19));
 	//TODO:calc terraformed and colonized planets/moons on CPU
 	life_level = (seeds.y % habitability) * fmin(1.0f, age.data / EARTH_AGE);
 	lifeType = LifeLvlToEnum(life_level);
-	species = (lifeType>0) ? seeds.z % life_level : 0;
+	species = (seeds.z % life_level) * lifeType * 0.1f;
 	hostility = (lifeType > COMPLEX_LIFE) ? (fabs(RandDblFromLng(seeds.z)) * 160.0) + (255-life_level) : 0;
 	sumHostile = hostility;
 	moons = seeds.w % MAX_MOONS;
 	
 	planet.info = (uchar8)(age.bytes[0], age.bytes[1], moons, species, hostility, habitability, life_level, type);
 	
-	frac2 = (planet.mass / EARTH_MASS) * 100.0;
+	//frac2 = (planet.mass / EARTH_MASS) * 100.0;
+	orbitGap = planet.radius * 2.0;
 	mstart = index * MAX_MOONS;
 	seed = ~seed;
 	for (uint m=0; m<moons; ++m) {
@@ -1038,28 +1129,32 @@ __global Star* star_buffer, __global uint* loaded_star)
 		moon.volume = PI_MUL_4o3 * pow(moon.radius, 3.0f);
 		moon.mass = moon.density * moon.volume;
 
-		frac1 = min(10.0, (moon.mass / EARTH_MASS) * 100.0);
+		orbitGap += planet.radius + (fabs(RandDblFromLng(seeds.w)) * 5e8);
 		moon.eccentricity = 0.000001 + (fabs(RandDblFromLng(seeds.x)) * 0.1);
-		moon.velocity = 100.0f + frac2 + (fabs(RandDblFromLng(seeds.w) * 2000.0) / frac1);
-		moon.orbit_rad = G * planet.mass / pow(moon.velocity, 2.0f);
+		moon.orbit_rad = moon.radius + orbitGap;
+		moon.velocity = ((G * planet.mass) / moon.orbit_rad) * rotNP;
+		orbitGap += moon.radius * 2.0;
+		
+		seeds.z = RandomLong(seeds.w);
+		seeds.w = RandomLong(seeds.z);
+		
+		frac1 = fmin(10.0f, (moon.mass / (float)EARTH_MASS) * 100.0f);
 		moon.temp = fmax(2.0, lumiFrac * (MOON_TEMP / pow(planet.orbit_rad / ONE_AU, 2.0)));
 		moon.orbit_time = (PI_MUL_2 * moon.orbit_rad) / moon.velocity;
-		moon.rot_time = 21600.0 + ((seeds.w % 3600000) / frac1);
+		frac2 = RandDblFromLng(seeds.z) > 0.9 ? -rotNP : rotNP;
+		moon.rot_time = (21600.0 + ((seeds.w % 3600000) * frac1)) * frac2;
 		moon.position.xyz = planet.position.xyz;
-		moon.position.z += (planet.radius * PLANET_MAG) + (moon.orbit_rad * (PLANET_MAG/10.0));
+		moon.position.z += moon.orbit_rad*PLANET_MAG*0.1;
 
 		seeds.x = RandomLong(seeds.w);
 		seeds.y = RandomLong(seeds.x);
 		seeds.z = RandomLong(seeds.y);
 		seeds.w = RandomLong(seeds.z);
 
-		moon.orbit.x = RandDblFromLng(seeds.x);
-		moon.orbit.y = RandDblFromLng(seeds.y);
-		variFrac = fabs(moon.orbit.x) + fabs(moon.orbit.y);
-		moon.orbit.y = (variFrac>1.0f) ? 1.0f - moon.orbit.x : moon.orbit.y;
-		moon.orbit.z = (variFrac>1.0f) ? 0.0f : 1.0f - variFrac;
+		moon.orbit.x = pow(RandDblFromLng(seeds.x), 2.0) * MAX_ORBIT_TILT;
+		moon.orbit.y = pow(RandDblFromLng(seeds.y), 2.0) * MAX_ORBIT_TILT;
 
-		age.data = planet.age + (planet.age * (RandDblFromLng(seeds.z) * 0.05));
+		age.data = planet.age - (planet.age * fabs(RandDblFromLng(seeds.z)) * 0.1);
 		moon.water_frac = GetMoonWaterFrac(type, planet.water_frac, seeds.z);
 		habitability = BaseMoonHabScore(type, seeds.w);
 		habitability += (64.0f-(fabs(fmin(2.0f,(moon.temp/EARTH_TEMP))-1.0f)*64.0f)) + fmin(64.0f,moon.water_frac*128.0f);
@@ -1076,12 +1171,15 @@ __global Star* star_buffer, __global uint* loaded_star)
 			species = LifeLvlToEnum(life_level) ? seeds.z % 1+MAX_MILL_SPECIES : 0;
 		} else if (lifeType < TYPE_I_CIV) {
 			function = seeds.x % 4;
-			life_level = (function>0) ? planet.life_level : 0;
-			species = 0;
+			life_level = fmin(seeds.y % (planet.life_level-64),
+						 (seeds.y % habitability) * fmin(1.0f, age.data / EARTH_AGE));
+			species = (seeds.z % life_level) * LifeLvlToEnum(life_level) * 0.1f;
+			life_level = (function>0) ? planet.life_level : life_level;
 		} else {
 			function = 4 + (seeds.x % 6);
+			life_level = (seeds.y % habitability) * fmin(1.0f, age.data / EARTH_AGE);
+			species = (seeds.z % life_level) * LifeLvlToEnum(life_level) * 0.1f;
 			life_level = planet.life_level;
-			species = 0;
 		}
 
 		switch (function) {
@@ -1201,9 +1299,9 @@ const uint moon_index, const uint star_index, const RenderInfo render_info)
 				//if (camPnt.z > 0.0) {	
 					// get normal and color for intersection
 					normRay = normalize(wldPnt - moon.position);
-					ltiVect = CalcSurfColor(wldPnt, normRay, render_info.cam_pos, star.position, starClr, diffuse, specular, lightPow);
+					ltiVect = CalcSurfLight(wldPnt, normRay, render_info.cam_pos, star.position, starClr, diffuse, specular, lightPow);
 					
-					frag_buffer[pix_index].colors[(ry * render_info.aa_dim) + rx] = ColorMultiplyV(color, ltiVect);
+					frag_buffer[pix_index].colors[(ry * render_info.aa_dim) + rx] = ColorMultiplyV3(color, ltiVect);
 
 					//intersection.point = wldPnt;
 					//intersection.normal = normRay;
@@ -1217,7 +1315,8 @@ const uint moon_index, const uint star_index, const RenderInfo render_info)
 
 __kernel void DrawPlanet(__global Planet* planet_buffer, 
 __global Star* star_buffer, __global PFrags* frag_buffer,
-const uint planet_index, const uint star_index, const RenderInfo render_info)
+const uint planet_index, const uint star_index, const RenderInfo render_info,
+read_only image2d_t texture)
 {
     uint pix_X = get_global_id(0);
 	uint pix_Y = get_global_id(1);
@@ -1225,7 +1324,8 @@ const uint planet_index, const uint star_index, const RenderInfo render_info)
 
 	Star star = star_buffer[star_index];
 	Planet planet = planet_buffer[planet_index];
-	uchar4 color = planetAvgColors[planet.type];
+	//uchar4 color = planetAvgColors[planet.type];
+	float4 color;
 	
 	float3 starClr = ColorToVec3(star.color);
 	float4 diffuse = planetDiffData[planet.type];
@@ -1264,11 +1364,14 @@ const uint planet_index, const uint star_index, const RenderInfo render_info)
 
 				// is hit point in front of camera?
 				//if (camPnt.z > 0.0) {
-					// get normal and color for intersection
+					// get normal to the intersection point and sphere
 					normRay = normalize(wldPnt - planet.position);
-					ltiVect = CalcSurfColor(wldPnt, normRay, render_info.cam_pos, star.position, starClr, diffuse, specular, lightPow);
+					// get surface color for intersection point
+					color = CalcSurfColor(texture, normRay, (double2)(0.0,0.0));
+					// calc lighting/shading for intersected surface
+					ltiVect = CalcSurfLight(wldPnt, normRay, render_info.cam_pos, star.position, starClr, diffuse, specular, lightPow);
 
-					frag_buffer[pix_index].colors[(ry * render_info.aa_dim) + rx] = ColorMultiplyV(color, ltiVect);
+					frag_buffer[pix_index].colors[(ry * render_info.aa_dim) + rx] = Vec3ToColor(VectMin(ltiVect*color.xyz));//Vec3ToColor(color.xyz);
 
 					//intersection.point = wldPnt;
 					//intersection.normal = normRay;
@@ -1287,9 +1390,11 @@ const uint star_index, const double game_time, const RenderInfo render_info)
 	uint pix_Y = get_global_id(1);
 	uint pix_index = (pix_Y * render_info.pixels_X) + pix_X;
 
+	UCharVec8 starColDat;
 	Star star = star_buffer[star_index];
-	uchar starGlow = starAvgColors[star.type][6];
-	uchar starShadow = starAvgColors[star.type][7];
+	starColDat.data = starAvgColors[star.type];
+	uchar starGlow = starColDat.s[6];
+	uchar starShadow = starColDat.s[7];
 
 	double sDist;
 	float fakeRad;
@@ -1344,7 +1449,7 @@ const uint star_index, const double game_time, const RenderInfo render_info)
 	}
 }
 
-__kernel void DrawStars(__global Star* star_buffer, __global PFrags* frag_buffer, 
+__kernel void DrawStars(write_only image2d_t pix_buffer, __global Star* star_buffer, 
 __global InstanceData* idata_buffer, __global uint* adb_sizes, 
 __global uint* loaded_star, const RenderInfo render_info)
 {
@@ -1356,85 +1461,77 @@ __global uint* loaded_star, const RenderInfo render_info)
 	Star star = star_buffer[zone_index];
 	RGB32 color, bcol;
 	double3 sprc;
-	//int frag_index;
-	//int pix_index;
-	int2 pixel_coords;
-	int2 ifrag_coords;
-	float2 ffrag_coords;
-	float2 ffrag_newcrd;
-	float2 screen_coords;
-	double s_dist, s_rand;
-	float s_prad, d_frac;
+	int2 pixelCoords;
+	int2 ptempCoords;
+	float2 screenCoords;
+	float2 colFracs;
+	float4 normColor;
+	double starDist, randFrac;
+	float starRadp, distFrac;
 	
 	sprc = VectRot(star.position - render_info.cam_pos, render_info.cam_ori);
 	
 	if (sprc.z > 0.0f) {
-		screen_coords.x = render_info.half_X + (sprc.x / sprc.z) * render_info.cam_foc;
-		screen_coords.y = render_info.half_Y + (sprc.y / sprc.z) * render_info.cam_foc;
+		screenCoords.x = render_info.half_X + (sprc.x / sprc.z) * render_info.cam_foc;
+		screenCoords.y = render_info.half_Y + (sprc.y / sprc.z) * render_info.cam_foc;
 		
-		pixel_coords.x = screen_coords.x;
-		pixel_coords.y = screen_coords.y;
+		pixelCoords.x = screenCoords.x;
+		pixelCoords.y = screenCoords.y;
 
-		if (pixel_coords.x < render_info.pixels_X && pixel_coords.y < render_info.pixels_Y) {
+		if (pixelCoords.x < render_info.pixels_X && pixelCoords.y < render_info.pixels_Y) {
 
-			s_dist = VectMag(sprc);
-			d_frac = fmin((float)(s_dist / SECTOR_HALF), 1.0f);
-			s_prad = StarGlowSize(star.luminosity, s_dist);
+			starDist = VectMag(sprc);
+			distFrac = fmin((float)(starDist / SECTOR_HALF), 1.0f);
+			starRadp = StarGlowSize(star.luminosity, starDist);
 			
-			bcol.rgba = (uchar4)(255,255,255, round(d_frac*255.0));
-			color = ScaleColor(AlphaBlend(star.color, bcol), 1.0f-d_frac);
+			// simulate drop in saturation and visibility with distance
+			bcol.rgba = (uchar4)(255,255,255, round(distFrac*255.0f));
+			color = AlphaBlend(star.color, bcol);
+			color.alpha = round(255.0f * (1.0f - distFrac));
 		
-			if (s_prad < 0.5f) {
-			
-				ffrag_coords.x = screen_coords.x - pixel_coords.x;
-				ffrag_coords.y = screen_coords.y - pixel_coords.y;
-				ifrag_coords.x = ffrag_coords.x * ALMOST_TWO;
-				ifrag_coords.y = ffrag_coords.y * ALMOST_TWO;
-				color = ScaleColor(color, s_prad+1.0f);
-				frag_buffer[(pixel_coords.y * render_info.pixels_X) + pixel_coords.x].
-				colors[(ifrag_coords.y * render_info.aa_dim) + ifrag_coords.x] = color;
+			// check if star glow radius less than half a pixel
+			if (starRadp < 0.5f) {
+				// write star color to corresponding pixel
+				normColor = ColorToVec4(ScaleColor(color, starRadp+0.3f));
+				write_imagef(pix_buffer, pixelCoords, normColor);
 
-				// chance to fill nearby fragments to create twinkling effect for distant stars
-				s_rand = cos(render_info.d_time*1e-4) * sin((double)RandomLong(zone_index&render_info.rand_int));
+				// color nearby pixels based on position and size of star
+				screenCoords.x -= (float)pixelCoords.x;
+				screenCoords.y -= (float)pixelCoords.y;
+				colFracs.x = .1f + fabs(screenCoords.x - .5f);
+				colFracs.y = .1f + fabs(screenCoords.y - .5f);
+
+				ptempCoords.x = screenCoords.x<.5f ? pixelCoords.x-1 : pixelCoords.x+1;
+				ptempCoords.y = screenCoords.y<.5f ? pixelCoords.y-1 : pixelCoords.y+1;
+				ptempCoords.x = min(max(0, ptempCoords.x), (int)render_info.pixels_X-1);
+				ptempCoords.y = min(max(0, ptempCoords.y), (int)render_info.pixels_Y-1);
+				
+				write_imagef(pix_buffer, (int2)(ptempCoords.x, pixelCoords.y), normColor*colFracs.x);
+				write_imagef(pix_buffer, (int2)(pixelCoords.x, ptempCoords.y), normColor*colFracs.y);
+				write_imagef(pix_buffer, ptempCoords, normColor*((colFracs.x+colFracs.y)*.33f));
+
+				// chance to increase pixel brightness to create twinkling effect
+				randFrac = sin((double)RandomLong(zone_index&render_info.rand_int));
 		
-				if (s_rand > 1.0-(d_frac*s_prad)) {
-					screen_coords += render_info.aa_div;
-					ffrag_newcrd.x = screen_coords.x-(int)screen_coords.x;
-					ffrag_newcrd.y = screen_coords.y-(int)screen_coords.y;
-					if ((ffrag_coords.x != ffrag_newcrd.x) && (int)screen_coords.x < render_info.pixels_X) {
-						frag_buffer[((int)screen_coords.y * render_info.pixels_X) + (int)screen_coords.x].
-						colors[(ifrag_coords.y * render_info.aa_dim) + (int)(ffrag_newcrd.x * ALMOST_TWO)] = color;
-					} else if ((ffrag_coords.y != ffrag_newcrd.y) && (int)screen_coords.y < render_info.pixels_Y) {
-						frag_buffer[((int)screen_coords.y * render_info.pixels_X) + (int)screen_coords.x].
-						colors[((int)(ffrag_newcrd.y * ALMOST_TWO) * render_info.aa_dim) + ifrag_coords.x] = color;
-					}
-					
-					screen_coords -= render_info.aa_inc;
-					ffrag_newcrd.x = screen_coords.x-(int)screen_coords.x;
-					ffrag_newcrd.y = screen_coords.y-(int)screen_coords.y;
-					if ((ffrag_coords.x != ffrag_newcrd.x) && (int)screen_coords.x > 0) {
-						frag_buffer[((int)screen_coords.y * render_info.pixels_X) + (int)screen_coords.x].
-						colors[(ifrag_coords.y * render_info.aa_dim) + (int)(ffrag_newcrd.x * ALMOST_TWO)] = color;
-					} else if ((ffrag_coords.y != ffrag_newcrd.y) && (int)screen_coords.y > 0) {
-						frag_buffer[((int)screen_coords.y * render_info.pixels_X) + (int)screen_coords.x].
-						colors[((int)(ffrag_newcrd.y * ALMOST_TWO) * render_info.aa_dim) + ifrag_coords.x] = color;
-					}
+				if (randFrac > 1.0-(distFrac*starRadp) && (zone_index^render_info.rand_int)%23 == 1) {
+					color = ScaleColor(color, fabs(randFrac*cos(render_info.d_time*1e-2)));
+					write_imagef(pix_buffer, pixelCoords, ColorToVec4(color));
 				}
 				
 			} else {
 				// create depth index [0-9]
-				uint depth_index = floor(d_frac*9.9999f);
+				uint depth_index = floor(distFrac*9.9999f);
 				// create instance data structure
 				InstanceData idata = {
-					(float4)(ColorToVec3(color), 1.0f),
-					(float2)(screen_coords.x, screen_coords.y),
-					s_prad * STAR_TEX_RATIO, d_frac
+					ColorToVec4(color),
+					(float2)(screenCoords.x, screenCoords.y),
+					starRadp * STAR_TEX_RATIO, distFrac
 				};
 				// save instance data to buffer (into 10 groups separated by depth)
 				idata_buffer[increment(&adb_sizes[depth_index])+(IBUFF_OFFSET*depth_index)] = idata;
 				
 				// should save index of closest star
-				if (d_frac < FLARE_VIS_DEPTH) {
+				if (distFrac < FLARE_VIS_DEPTH) {
 					*loaded_star = zone_index;
 				}
 			}
@@ -1453,7 +1550,8 @@ __global volatile uint* min_dist, __global int* planet_found, __global float2* m
 	
 	float fakeRad = planet.radius * PLANET_MAG;
 	double sDist = RaySphereIntersect(render_info.cam_pos, mouseRay, planet.position, fakeRad*fakeRad);
-	uint fltInt;
+	uint fltInt, moon_index;
+	uint mstart = planet_index * MAX_MOONS;
 	
 	if (sDist > 0.0) {
 		fltInt = sDist * 0.0001;
@@ -1462,13 +1560,10 @@ __global volatile uint* min_dist, __global int* planet_found, __global float2* m
 		if (*min_dist == fltInt) {
 			planet_found[0] = planet_index;
 		}
-		return;
+		//return;
 	}
 	
 	//barrier(CLK_GLOBAL_MEM_FENCE);
-	
-	uint moon_index;
-	uint mstart = planet_index * MAX_MOONS;
 	
 	for (uint m=0; m < planet.moons; ++m) {
 	
@@ -1526,23 +1621,19 @@ __kernel void FillFragBuff(__global PFrags* frag_buffer, const RenderInfo render
 {
     uint pix_X = get_global_id(0);
 	uint pix_Y = get_global_id(1);
-	uint pix_index = (pix_Y * render_info.pixels_X) + pix_X;
+	
+	frag_buffer[(pix_Y * render_info.pixels_X) + pix_X].data = (uint4)(0,0,0,0);
+
+	/*uint pix_index = (pix_Y * render_info.pixels_X) + pix_X;
 	uint pix_seed = render_info.rand_int * pix_index;
 
+	RGB32 noiseClr;
 	ulong xseed = RandomLong(pix_seed * pix_X);
 	ulong yseed = RandomLong(pix_seed * pix_Y);
 	uchar noiseMag = (xseed & yseed) % NOISE_MAX;
-	RGB32 noiseClr = {noiseMag, noiseMag, noiseMag, 0};
+	noiseClr.rgba = (uchar4)(noiseMag, noiseMag, noiseMag, 0);
 	
-	frag_buffer[pix_index].data = (uint4)(noiseClr.data,noiseClr.data,noiseClr.data,noiseClr.data);
-}
-
-__kernel void FillFragBuffRT(__global PFrags* frag_buffer, const RenderInfo render_info)
-{
-    uint pix_X = get_global_id(0);
-	uint pix_Y = get_global_id(1);
-	
-	frag_buffer[(pix_Y * render_info.pixels_X) + pix_X].data = (uint4)(0,0,0,0);
+	frag_buffer[pix_index].data = (uint4)(noiseClr.data,noiseClr.data,noiseClr.data,noiseClr.data);*/
 }
 
 __kernel void FragsToFrame(__global PFrags* frag_buffer,
@@ -1553,40 +1644,17 @@ write_only image2d_t pix_buffer, const RenderInfo render_info)
 	uint pix_index = (pix_Y * render_info.pixels_X) + pix_X;
 	
 	PFrags frags = frag_buffer[pix_index];
-	float3 sumColor = (float3)(0.0f,0.0f,0.0f);
-		
-	for (uint r=0; r < render_info.aa_lvl; ++r) {
-		sumColor.x += frags.colors[r].red;
-		sumColor.y += frags.colors[r].green;
-		sumColor.z += frags.colors[r].blue;
-	}
-	
-	write_imagef(pix_buffer, (int2)(pix_X, pix_Y), NormalizeColor(sumColor * render_info.aa_div, 1.0f));
-}
-
-__kernel void FragsToFrameRT(__global PFrags* frag_buffer,
-write_only image2d_t pix_buffer, const RenderInfo render_info)
-{
-    uint pix_X = get_global_id(0);
-	uint pix_Y = get_global_id(1);
-	uint pix_index = (pix_Y * render_info.pixels_X) + pix_X;
-	
-	PFrags frags = frag_buffer[pix_index];
-	float3 sumColor = (float3)(0.0f,0.0f,0.0f);
-	float ccount = 0.0f;
+	float4 sumColor = (float4)(0.0f,0.0f,0.0f,0.0f);
 		
 	for (uint r=0; r < render_info.aa_lvl; ++r) {
 		if (frags.colors[r].alpha > 0) {
 			sumColor.x += frags.colors[r].red;
 			sumColor.y += frags.colors[r].green;
 			sumColor.z += frags.colors[r].blue;
-			ccount += 1.0f;
+			sumColor.w += frags.colors[r].alpha;
 		}
 	}
 	
-	if (ccount == 0.0f) {
-		write_imagef(pix_buffer, (int2)(pix_X, pix_Y), (float4)(0.0f,0.0f,0.0f,0.0f));
-	} else {
-		write_imagef(pix_buffer, (int2)(pix_X, pix_Y), NormalizeColor(sumColor/ccount, ccount*render_info.aa_div));
-	}
+	if (sumColor.w > 0.0f)
+		write_imagef(pix_buffer, (int2)(pix_X, pix_Y), NormalizeColor(sumColor*render_info.aa_div));
 }

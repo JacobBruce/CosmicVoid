@@ -2,10 +2,12 @@
 
 Game::Game(GLFWwindow* window, KeyboardServer& kServer, MouseServer& mServer)
 :
-	kbd( kServer ),
-	mouse( mServer ),
-	exitGame( false ),
-	isGamePaused( false )
+	kbd(kServer),
+	mouse(mServer),
+	genJobCount(0),
+	genThreadJobs(0),
+	exitGame(false),
+	isGamePaused(false)
 {
 	// ensure the compiler is playing nice
 	assert(sizeof(RGB32) == sizeof(cl_RGB32) && sizeof(RGB32) == 4);
@@ -47,6 +49,9 @@ Game::Game(GLFWwindow* window, KeyboardServer& kServer, MouseServer& mServer)
 	// Load texture files
 	gfx.LoadTextures("./Data/textures/textures.list");
 
+	// Load texture files
+	gfx.LoadSkyboxTex("./Data/textures/skybox.list");
+
 	// Load font files
 	gfx.LoadFonts("./Data/fonts/fonts.list", "./Data/fonts/font_chars.list");
 
@@ -80,9 +85,9 @@ Game::Game(GLFWwindow* window, KeyboardServer& kServer, MouseServer& mServer)
 	camera.position.y = zonePos.y * ZONE_HALF;
 	camera.position.z = zonePos.z * ZONE_HALF;
 
+	gfx.UpdateFOV(camera.foclen);
+
 	// calc useful screen info
-	widthHalf = gfx.windowWidth / 2;
-	heightHalf = gfx.windowHeight / 2;
 	widthRays = gfx.windowWidth * aaInfo.lvl;
 	heightRays = gfx.windowHeight * aaInfo.lvl;
 	heightSpan = gfx.windowHeight - 1;
@@ -94,8 +99,8 @@ Game::Game(GLFWwindow* window, KeyboardServer& kServer, MouseServer& mServer)
 	rInfo.aa_info = aaInfo;
 	rInfo.pixels_X = gfx.windowWidth;
 	rInfo.pixels_Y = gfx.windowHeight;
-	rInfo.half_X = widthHalf;
-	rInfo.half_Y = heightHalf;
+	rInfo.half_X = gfx.widthHalf;
+	rInfo.half_Y = gfx.heightHalf;
 
 	instList.reserve(99);
 	idatSizes.resize(10);
@@ -105,8 +110,10 @@ Game::Game(GLFWwindow* window, KeyboardServer& kServer, MouseServer& mServer)
 	pDistList.resize(MAX_PLANETS);
 	mDistList.resize(MAX_MOONS);
 
-	// create buffer for OCL from OGL instance buffer
-	gl_idatBuff = cl::BufferGL(openCL.context, CL_MEM_READ_WRITE, gfx.openGL.StarBuffer());
+	heightMaps.resize(MAX_PLANETS);
+	planetTexs.resize(MAX_PLANETS);
+
+    threads.reserve(MAX_PLANETS);
 
 	// allocate memory on GPU for pixel fragment buffer
 	cl_fragBuff = cl::Buffer(openCL.context, CL_MEM_WRITE_ONLY, sizeof(cl_RGB32)*fragCount);
@@ -137,6 +144,27 @@ Game::Game(GLFWwindow* window, KeyboardServer& kServer, MouseServer& mServer)
 
 	// allocate memory on GPU for mouse position buffer
 	cl_mousePosBuff = cl::Buffer(openCL.context, CL_MEM_READ_WRITE, sizeof(cl_float2));
+
+	for (int p=0; p<MAX_PLANETS; ++p) {
+        planetTexs[p] = new RGB32[PLANET_TEX_W*PLANET_TEX_H];
+        heightMaps[p] = new double*[PLANET_TEX_W];
+        for (int m=0; m<PLANET_TEX_W; ++m) {
+            heightMaps[p][m] = new double[PLANET_TEX_H];
+        }
+	}
+
+	cl::ImageFormat imgFormat;
+	imgFormat.image_channel_data_type = CL_UNORM_INT8;
+	imgFormat.image_channel_order = CL_RGBA;
+
+	try {
+	    for (size_t p=0; p<MAX_PLANETS; ++p)
+            cl_textures.push_back(cl::Image2D(openCL.context,
+            CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, imgFormat, PLANET_TEX_W, PLANET_TEX_H));
+    } catch (cl::Error& e) {
+        PrintLine("[OpenCL Error] ("+VarToStr(e.err())+"): "+e.what());
+        exit(EXIT_FAILURE);
+    }
 
 	// generate stars for surrounding zones
 	openCL.GS_Kernel.setArg(0, cl_starBuff);
@@ -269,9 +297,11 @@ void Game::HandleInput()
 		break;
 	case MouseEvent::WheelUp:
 		camera.foclen += 10;
+        gfx.UpdateFOV(camera.foclen);
 		break;
 	case MouseEvent::WheelDown:
 		camera.foclen -= 10;
+        gfx.UpdateFOV(camera.foclen);
 		break;
 	case MouseEvent::LPress:
 	    if (!isGamePaused) {
@@ -343,14 +373,17 @@ void Game::UpdateCamera()
 
 	// update camera direction
 	camera.UpdateDirection();
+	// set centered view for skybox
+	gfx.cam.Rotate(-camera.orientation.x, -camera.orientation.y, -camera.orientation.z);
+    gfx.openGL.UpdateMVP(gfx.cam.view);
 }
 
 void Game::BeginActions()
 {
 	// create ray through bottom left of virtual screen
 	camera.bl_ray = (camera.forward * camera.foclen).
-					VectSub(camera.right * (widthHalf-aaInfo.div)).
-					VectSub(camera.up * (heightHalf-aaInfo.div));
+					VectSub(camera.right * (gfx.widthHalf-aaInfo.div)).
+					VectSub(camera.up * (gfx.heightHalf-aaInfo.div));
 
 	// save data to RenderInfo structure
 	rInfo.cam_info = camera.GetInfo();
@@ -394,11 +427,6 @@ void Game::BeginActions()
 	globPos.x += globShift.x;
 	globPos.y += globShift.y;
 	globPos.z += globShift.z;
-
-	openCL.FB_Kernel.setArg(0, cl_fragBuff);
-	openCL.FB_Kernel.setArg(1, rInfo);
-	openCL.FillFragBuff(gfx.windowWidth, gfx.windowHeight);
-	openCL.queue.finish();
 }
 
 void Game::RenderFarStars()
@@ -442,9 +470,9 @@ void Game::RenderFarStars()
     openCL.queue.enqueueWriteBuffer(cl_idatSizesBuff, CL_TRUE, 0, sizeof(cl_uint)*10, idatSizes.data());
 	openCL.queue.finish();
 
-	openCL.DG_Kernel.setArg(0, cl_starBuff);
-	openCL.DG_Kernel.setArg(1, cl_fragBuff);
-	openCL.DG_Kernel.setArg(2, gl_idatBuff);
+	openCL.DG_Kernel.setArg(0, gfx.ClGlMemory(0));
+	openCL.DG_Kernel.setArg(1, cl_starBuff);
+	openCL.DG_Kernel.setArg(2, gfx.ClGlMemory(2));
 	openCL.DG_Kernel.setArg(3, cl_idatSizesBuff);
 	openCL.DG_Kernel.setArg(4, cl_indexBuff);
 	openCL.DG_Kernel.setArg(5, rInfo);
@@ -463,10 +491,12 @@ void Game::RenderFarStars()
     nearestIndex = 0;
     instanceIndex = 0;
 
+    cl::BufferGL& glIdatBuff((cl::BufferGL&)gfx.ClGlMemory(2));
+
     // properly sort closest stars to avoid blending issues
     if (instList.size() > 1) {
 
-        openCL.queue.enqueueReadBuffer(gl_idatBuff, CL_TRUE, 0, sizeof(cl_InstanceData)*instList.size(), instList.data());
+        openCL.queue.enqueueReadBuffer(glIdatBuff, CL_TRUE, 0, sizeof(cl_InstanceData)*instList.size(), instList.data());
         openCL.queue.finish();
 
         std::sort(instList.begin(), instList.end(), [](cl_InstanceData a, cl_InstanceData b){ return a.depth > b.depth; });
@@ -479,17 +509,15 @@ void Game::RenderFarStars()
         } else if (instList.back().depth < FLARE_VIS_DEPTH) {
             doLensFlare = true;
             openCL.queue.enqueueReadBuffer(cl_indexBuff, CL_TRUE, 0, sizeof(cl_uint), &nearestIndex);
-            openCL.queue.finish();
             openCL.queue.enqueueReadBuffer(cl_starBuff, CL_TRUE, sizeof(cl_Star)*nearestIndex, sizeof(cl_Star), &loadedStar);
-            openCL.queue.finish();
         }
 
-        openCL.queue.enqueueWriteBuffer(gl_idatBuff, CL_TRUE, 0, sizeof(cl_InstanceData)*instList.size(), instList.data());
+        openCL.queue.enqueueWriteBuffer(glIdatBuff, CL_TRUE, 0, sizeof(cl_InstanceData)*instList.size(), instList.data());
         openCL.queue.finish();
 
     } else if (instList.size() == 1) {
 
-        openCL.queue.enqueueReadBuffer(gl_idatBuff, CL_TRUE, 0, sizeof(cl_InstanceData), instList.data());
+        openCL.queue.enqueueReadBuffer(glIdatBuff, CL_TRUE, 0, sizeof(cl_InstanceData), instList.data());
         openCL.queue.finish();
 
         if (instList[0].depth < STAR_VIS_DEPTH) {
@@ -500,7 +528,6 @@ void Game::RenderFarStars()
         } else if (instList[0].depth < FLARE_VIS_DEPTH) {
             doLensFlare = true;
             openCL.queue.enqueueReadBuffer(cl_indexBuff, CL_TRUE, 0, sizeof(cl_uint), &nearestIndex);
-            openCL.queue.finish();
             openCL.queue.enqueueReadBuffer(cl_starBuff, CL_TRUE, sizeof(cl_Star)*nearestIndex, sizeof(cl_Star), &loadedStar);
             openCL.queue.finish();
         }
@@ -509,11 +536,25 @@ void Game::RenderFarStars()
 
 void Game::GenerateSolSystem()
 {
+    // Lambda function for planet texture generation
+    static auto genPlanetTex = [this](cl_Planet& planet, uint32_t i, uint32_t width, uint32_t height, std::pair<uint64_t,uint64_t> seeds) {
+        MapGen mapGen;//(TEX_GEN_DELAY, TEX_COL_DELAY);
+        std::pair<double,double> mapSeeds((1.0+DblFromLong(seeds.first*(i+1)))*0.5, seeds.second*(i+1));
+        mapGen.GenHeightMap(heightMaps[i], width, height, WATER_ALT_MAX-(planet.water_frac*WATER_ALT_DIF), mapSeeds);
+        planet.water_frac = mapGen.DrawColors(planetTexs[i], planet);
+        genJobCount--;
+    };
+
+    if (genThreadJobs > 0 && genJobCount < MAX_THREADS) {
+        uint32_t p = --genThreadJobs;
+        threads.emplace_back(genPlanetTex, std::ref(planets[p]), p, PLANET_TEX_W, PLANET_TEX_H, sysSeeds);
+        genJobCount++;
+    }
+
     if (doLoadStar) {
         if (!isStarLoaded) {
 
             openCL.queue.enqueueReadBuffer(cl_indexBuff, CL_TRUE, 0, sizeof(cl_uint), &loadedIndex);
-            openCL.queue.finish();
             openCL.queue.enqueueReadBuffer(cl_starBuff, CL_TRUE, sizeof(cl_Star)*loadedIndex, sizeof(cl_Star), &loadedStar);
             openCL.queue.finish();
 
@@ -528,51 +569,60 @@ void Game::GenerateSolSystem()
             loadedGlobPos.z += globPos.z;
             loadedGlobID = Index3Dto1D_64(loadedGlobPos, GALAXY_SPAN);
 
-            uint64_t rnd1 = RandomLong(loadedGlobID);
-            uint64_t rnd2 = RandomLong(rnd1);
+            if (solSystem.index != loadedGlobID) {
 
-            solSystem.planets = rnd1 % (MAX_PLANETS+1);
-            solSystem.plane = DVec3::VectRnd(rnd2).vector;
-            solSystem.index = loadedGlobID;
-            solSystem.security = 0;
-            solSystem.conflict = 0;
-            solSystem.economy = 0;
-            solSystem.civ_count = 0;
-            solSystem.moons = 0;
+                sysSeeds.first = RandomLong(loadedGlobID);
+                sysSeeds.second = RandomLong(sysSeeds.first);
 
-            if (solSystem.planets > 0) {
-                openCL.queue.enqueueWriteBuffer(cl_systemBuff, CL_TRUE, 0, sizeof(cl_SolarSystem), &solSystem);
-                openCL.queue.finish();
+                solSystem.planets = sysSeeds.first % (MAX_PLANETS+1);
+                solSystem.plane = {DblFromLong(sysSeeds.first)*PI_MUL_2, DblFromLong(sysSeeds.second)*PI_MUL_2};
+                solSystem.index = loadedGlobID;
+                solSystem.security = 0;
+                solSystem.conflict = 0;
+                solSystem.economy = 0;
+                solSystem.civ_count = 0;
+                solSystem.moons = 0;
 
-                openCL.GP_Kernel.setArg(0, cl_systemBuff);
-                openCL.GP_Kernel.setArg(1, cl_planetBuff);
-                openCL.GP_Kernel.setArg(2, cl_moonBuff);
-                openCL.GP_Kernel.setArg(3, cl_starBuff);
-                openCL.GP_Kernel.setArg(4, cl_indexBuff);
+                if (solSystem.planets > 0) {
+                    openCL.queue.enqueueWriteBuffer(cl_systemBuff, CL_TRUE, 0, sizeof(cl_SolarSystem), &solSystem);
+                    openCL.queue.finish();
 
-                openCL.GenPlanets(solSystem.planets);
-                openCL.queue.finish();
+                    openCL.GP_Kernel.setArg(0, cl_systemBuff);
+                    openCL.GP_Kernel.setArg(1, cl_planetBuff);
+                    openCL.GP_Kernel.setArg(2, cl_moonBuff);
+                    openCL.GP_Kernel.setArg(3, cl_starBuff);
+                    openCL.GP_Kernel.setArg(4, cl_indexBuff);
 
-                openCL.queue.enqueueReadBuffer(cl_systemBuff, CL_TRUE, 0, sizeof(cl_SolarSystem), &solSystem);
-                openCL.queue.finish();
+                    openCL.GenPlanets(solSystem.planets);
+                    openCL.queue.finish();
 
-                pDistList.resize(solSystem.planets);
-                planets.resize(solSystem.planets);
+                    openCL.queue.enqueueReadBuffer(cl_systemBuff, CL_TRUE, 0, sizeof(cl_SolarSystem), &solSystem);
+                    openCL.queue.finish();
 
-                openCL.queue.enqueueReadBuffer(cl_planetBuff, CL_TRUE, 0, sizeof(cl_Planet)*solSystem.planets, planets.data());
-                openCL.queue.finish();
+                    pDistList.resize(solSystem.planets);
+                    planets.resize(solSystem.planets);
 
-                for (uint32_t p=0; p < solSystem.planets; ++p) {
-                    const cl_Planet& planet(planets[p]);
-                    moons[p].resize(planet.moons);
-                    if (planet.moons > 0) {
-                        //TODO: create seperate moons vector for each planet so we only read cl_moonBuff once in GenerateSolSystem()
-                        openCL.queue.enqueueReadBuffer(cl_moonBuff, CL_TRUE, sizeof(cl_Moon)*MAX_MOONS*p, sizeof(cl_Moon)*planet.moons, moons[p].data());
-                        openCL.queue.finish();
+                    openCL.queue.enqueueReadBuffer(cl_planetBuff, CL_TRUE, 0, sizeof(cl_Planet)*solSystem.planets, planets.data());
+                    openCL.queue.finish();
+
+                    for (uint32_t p=0; p<solSystem.planets; ++p)
+                    {
+                        moons[p].resize(planets[p].moons);
+
+                        if (planets[p].moons > 0)
+                            openCL.queue.enqueueReadBuffer(cl_moonBuff, CL_FALSE, sizeof(cl_Moon)*MAX_MOONS*p,
+                                                           sizeof(cl_Moon)*planets[p].moons, moons[p].data());
                     }
+
+                    genThreadJobs = solSystem.planets;
+
+                } else {
+                    pDistList.resize(0);
+                    genThreadJobs = 0;
                 }
             } else {
-                pDistList.resize(0);
+                std::cout << "Re-entering solar system" << std::endl;
+                genThreadJobs *= -1;
             }
 
             std::cout << "Planets:" << solSystem.planets << std::endl;
@@ -598,8 +648,30 @@ void Game::GenerateSolSystem()
             //star is out of view but still close
         } else {
             isStarLoaded = false;
+            genThreadJobs = -genThreadJobs;
             sound.ForcePlay(Sounds::EXITING_SYSTEM);
         }
+    }
+
+    if (threads.size() > 0 && genJobCount == 0) {
+        // check if player left system before all textures generated
+        if (genThreadJobs == 0) {
+
+            cl::size_t<3> origin; cl::size_t<3> region;
+            origin[0] = 0; origin[1] = 0; origin[2] = 0;
+            region[0] = PLANET_TEX_W; region[1] = PLANET_TEX_H; region[2] = 1;
+
+            for (int32_t p=solSystem.planets-1; p >= 0; --p)
+                openCL.queue.enqueueWriteImage(cl_textures[p], CL_FALSE, origin, region,
+                                               sizeof(RGB32)*PLANET_TEX_W, 0, planetTexs[p]);
+            openCL.queue.finish();
+        }
+
+        for (std::thread& thread : threads) thread.join();
+
+        threads.clear();
+        threads.reserve(solSystem.planets);
+        std::cout << "done generating planets" << std::endl;
     }
 }
 
@@ -618,6 +690,9 @@ void Game::RenderSolSystem()
 
     if (isStarLoaded) {
 
+        // clear pixel fragments used for ray-tracing
+        ClearFragBuff();
+
         lsPosRelCam = camera.PointRelCam(loadedStarPos);
         loadedDist = camera.position.VectDist(loadedStarPos);
 
@@ -629,11 +704,6 @@ void Game::RenderSolSystem()
             cdFrac = 0.5f + (0.5f * std::pow(lsDistFrac, 2.0f));
             doLensFlare = true;
         }
-
-        openCL.RFB_Kernel.setArg(0, cl_fragBuff);
-        openCL.RFB_Kernel.setArg(1, rInfo);
-        openCL.FillFragBuffRT(gfx.windowWidth, gfx.windowHeight);
-        openCL.queue.finish();
 
         for (pIndex=0; pIndex < solSystem.planets; ++pIndex)
         {
@@ -659,6 +729,7 @@ void Game::RenderSolSystem()
                     openCL.DP_Kernel.setArg(3, spIndex);
                     openCL.DP_Kernel.setArg(4, loadedIndex);
                     openCL.DP_Kernel.setArg(5, rInfo);
+                    openCL.DP_Kernel.setArg(6, cl_textures[spIndex]);
                     openCL.DrawPlanet(screenBounds.x, screenBounds.y, screenBounds.z, screenBounds.w);
                     openCL.queue.finish();
                 }
@@ -751,6 +822,7 @@ void Game::RenderSolSystem()
                 openCL.DP_Kernel.setArg(3, spIndex);
                 openCL.DP_Kernel.setArg(4, loadedIndex);
                 openCL.DP_Kernel.setArg(5, rInfo);
+                openCL.DP_Kernel.setArg(6, cl_textures[spIndex]);
                 openCL.DrawPlanet(screenBounds.x, screenBounds.y, screenBounds.z, screenBounds.w);
                 openCL.queue.finish();
             }
@@ -868,43 +940,44 @@ void Game::Render2DGUI()
                 strTitles[1] = LANG(STR_LIFE_LEVEL);
                 strStats[1] = LifeTypeStr(lifeType);
                 strTitles[2] = LANG(STR_SPECIES);
-                strStats[2] = VarToStr((int)pickedPlanet.species)+((pickedPlanet.species==0)? "" : " "+LANG(STR_MILLION));
+                strStats[2] = pickedPlanet.species==0 ? "0" : "~"+VarToStr((int)pickedPlanet.species)+" "+LANG(STR_MILLION);
                 strTitles[3] = LANG(STR_HOSTILITY);
-                strStats[3] = FormatFltStr(VarToStr(std::min(pickedPlanet.hostility/255.0f, 1.0f)))+"%";
+                strStats[3] = FormatFltStr(VarToStr((pickedPlanet.hostility/255.0f) * 100.0f))+"%";
                 strTitles[4] = LANG(STR_HABITABILITY);
-                strStats[4] = FormatFltStr(VarToStr(std::min(pickedPlanet.habitability/255.0f, 1.0f)))+"%";
+                strStats[4] = FormatFltStr(VarToStr((pickedPlanet.habitability/255.0f) * 100.0f))+"%";
                 strTitles[5] = LANG(STR_WATER_FRAC);
-                strStats[5] = FormatFltStr(VarToStr(pickedPlanet.water_frac))+"%";
+                strStats[5] = FormatFltStr(VarToStr(pickedPlanet.water_frac * 100.0f))+"%";
                 strTitles[6] = LANG(STR_ECCENTRICITY);
                 strStats[6] = FormatFltStr(VarToStr(pickedPlanet.eccentricity));
                 strTitles[7] = LANG(STR_ORBIT_RAD);
                 strStats[7] = FormatFltStr(VarToStr(pickedPlanet.orbit_rad))+" "+LANG(STR_M);
                 strTitles[8] = LANG(STR_ORBIT_TIME);
-                strStats[8] = FormatFltStr(VarToStr(pickedPlanet.orbit_time/60.0f/60.0f/24.0f))+" "+LANG(STR_DAYS);
+                strStats[8] = FormatSecStr(std::abs(pickedPlanet.orbit_time));
                 strTitles[9] = LANG(STR_ROT_TIME);
-                strStats[9] = FormatFltStr(VarToStr(pickedPlanet.rot_time/60.0f/60.0f))+" "+LANG(STR_HOURS);
+                strStats[9] = FormatSecStr(std::abs(pickedPlanet.rot_time));
             } else {
                 lifeType = LifeLvlToEnum(pickedMoon.life_level);
                 strTitles[0] = LANG(STR_FUNCTION);
-                strStats[0] = MoonTypeStr(pickedMoon.function);
+                strStats[0] = MoonFuncStr(pickedMoon.function);
                 strTitles[1] = LANG(STR_LIFE_LEVEL);
                 strStats[1] = LifeTypeStr(lifeType);
                 strTitles[2] = LANG(STR_SPECIES);
-                strStats[2] = VarToStr((int)pickedMoon.species)+((pickedMoon.species==0)? "" : " "+LANG(STR_MILLION));
+                strStats[2] = pickedMoon.species==0 ? (pickedMoon.function>0 ? LANG(STR_LESS_THAN)+" 1 "+LANG(STR_MILLION) : "0")
+                            : "~"+VarToStr((int)pickedPlanet.species)+" "+LANG(STR_THOUSAND);
                 strTitles[3] = LANG(STR_HOSTILITY);
-                strStats[3] = FormatFltStr(VarToStr(std::min(pickedMoon.hostility/255.0f, 1.0f)))+"%";
+                strStats[3] = FormatFltStr(VarToStr((pickedMoon.hostility/255.0f) * 100.0f))+"%";
                 strTitles[4] = LANG(STR_HABITABILITY);
-                strStats[4] = FormatFltStr(VarToStr(std::min(pickedMoon.habitability/255.0f, 1.0f)))+"%";
+                strStats[4] = FormatFltStr(VarToStr((pickedMoon.habitability/255.0f) * 100.0f))+"%";
                 strTitles[5] = LANG(STR_WATER_FRAC);
-                strStats[5] = FormatFltStr(VarToStr(pickedMoon.water_frac))+"%";
+                strStats[5] = FormatFltStr(VarToStr(pickedMoon.water_frac * 100.0f))+"%";
                 strTitles[6] = LANG(STR_ECCENTRICITY);
                 strStats[6] = FormatFltStr(VarToStr(pickedMoon.eccentricity));
                 strTitles[7] = LANG(STR_ORBIT_RAD);
                 strStats[7] = FormatFltStr(VarToStr(pickedMoon.orbit_rad))+" "+LANG(STR_M);
                 strTitles[8] = LANG(STR_ORBIT_TIME);
-                strStats[8] = FormatFltStr(VarToStr(pickedMoon.orbit_time/60.0f/60.0f/24.0f))+" "+LANG(STR_DAYS);
+                strStats[8] = FormatSecStr(std::abs(pickedMoon.orbit_time));
                 strTitles[9] = LANG(STR_ROT_TIME);
-                strStats[9] = FormatFltStr(VarToStr(pickedMoon.rot_time/60.0f/60.0f))+" "+LANG(STR_HOURS);
+                strStats[9] = FormatSecStr(std::abs(pickedMoon.rot_time));
             }
 
             switch (lifeType) {
@@ -1007,11 +1080,11 @@ void Game::Render2DGUI()
             pickedVolumeTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_VOLUME)+":");
             pickedVolumeTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, FormatFltStr(VarToStr(pickedStar.volume))+" "+LANG(STR_M)+"\u00B3");
 
-            pickedAreaTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_AREA)+":");
-            pickedAreaTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, FormatFltStr(VarToStr(pickedStar.area))+" "+LANG(STR_M)+"\u00B2");
-
             pickedDensityTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_DENSITY)+":");
             pickedDensityTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, FormatFltStr(VarToStr(pickedStar.density))+" "+LANG(STR_KG)+"/"+LANG(STR_M)+"\u00B3");
+
+            pickedAreaTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_ROT_TIME)+":");
+            pickedAreaTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, FormatSecStr(std::abs(pickedStar.rot_time)));
 
             pickedTempTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_TEMP)+":");
             pickedTempTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, FormatFltStr(VarToStr(pickedStar.temp))+" "+LANG(STR_K));
@@ -1050,7 +1123,7 @@ void Game::Render2DGUI()
         openCL.queue.enqueueReadBuffer(cl_indexBuff, CL_TRUE, 0, sizeof(int2), &pickedIndexPM);
         openCL.queue.finish();
 
-        isPickedPlanet = pickedIndexPM.x > -1;
+        isPickedPlanet = pickedIndexPM.x > -1 && pickedIndexPM.y < 0;
 
         if (isPickedPlanet || pickedIndexPM.y > -1) {
 
@@ -1069,11 +1142,11 @@ void Game::Render2DGUI()
                 titleStr = "             "+LANG(STR_PLANET)+" #"+VarToStr(pickedPlanetIndex);
                 typeStr = PlanetTypeStr(pickedPlanet.type);
                 massStr = FormatFltStr(VarToStr(pickedPlanet.mass))+" "+LANG(STR_KG);
-                velStr = FormatFltStr(VarToStr(pickedPlanet.velocity))+" "+LANG(STR_M)+"/"+LANG(STR_S);
+                velStr = FormatFltStr(VarToStr(std::abs(pickedPlanet.velocity)))+" "+LANG(STR_M)+"/"+LANG(STR_S);
                 radStr = FormatFltStr(VarToStr(pickedPlanet.radius))+" "+LANG(STR_M);
                 volStr = FormatFltStr(VarToStr(pickedPlanet.volume))+" "+LANG(STR_M)+"\u00B3";
-                areaStr = FormatFltStr(VarToStr(pickedPlanet.area))+" "+LANG(STR_M)+"\u00B2";
                 densStr = FormatFltStr(VarToStr(pickedPlanet.density))+" "+LANG(STR_KG)+"/"+LANG(STR_M)+"\u00B3";
+                areaStr = FormatFltStr(VarToStr(pickedPlanet.area))+" "+LANG(STR_M)+"\u00B2";
                 tempStr = FormatFltStr(VarToStr(pickedPlanet.temp))+" "+LANG(STR_K);
                 ageStr = ((pickedPlanet.age<1000) ? FormatFltStr(VarToStr(pickedPlanet.age))+" "+LANG(STR_MILLION) :
                           FormatFltStr(VarToStr(pickedPlanet.age*0.001f))+" "+LANG(STR_BILLION))+" "+LANG(STR_YEARS);
@@ -1085,15 +1158,16 @@ void Game::Render2DGUI()
                 titleStr = "     "+LANG(STR_MOON)+" #"+VarToStr(pickedPlanetIndex%MAX_MOONS)+" ["+LANG(STR_PLANET)+" #"+VarToStr(pickedPlanetIndex/MAX_MOONS)+"]";
                 typeStr = MoonTypeStr(pickedMoon.type);
                 massStr = FormatFltStr(VarToStr(pickedMoon.mass))+" "+LANG(STR_KG);
-                velStr = FormatFltStr(VarToStr(pickedMoon.velocity))+" "+LANG(STR_M)+"/"+LANG(STR_S);
+                velStr = FormatFltStr(VarToStr(std::abs(pickedMoon.velocity)))+" "+LANG(STR_M)+"/"+LANG(STR_S);
                 radStr = FormatFltStr(VarToStr(pickedMoon.radius))+" "+LANG(STR_M);
                 volStr = FormatFltStr(VarToStr(pickedMoon.volume))+" "+LANG(STR_M)+"\u00B3";
-                areaStr = FormatFltStr(VarToStr(pickedMoon.area))+" "+LANG(STR_M)+"\u00B2";
                 densStr = FormatFltStr(VarToStr(pickedMoon.density))+" "+LANG(STR_KG)+"/"+LANG(STR_M)+"\u00B3";
+                areaStr = FormatFltStr(VarToStr(pickedMoon.area))+" "+LANG(STR_M)+"\u00B2";
                 tempStr = FormatFltStr(VarToStr(pickedMoon.temp))+" "+LANG(STR_K);
                 ageStr = ((pickedMoon.age<1000) ? FormatFltStr(VarToStr(pickedMoon.age))+" "+LANG(STR_MILLION) :
                           FormatFltStr(VarToStr(pickedMoon.age*0.001f))+" "+LANG(STR_BILLION))+" "+LANG(STR_YEARS);
             }
+
             pickedColor = { 0.95f, 0.95f, 1.0f, 1.0f };
 
             pickedNameTxt.setText(&fontStyles[FONT_XOLONIUM].description, titleStr);
@@ -1113,11 +1187,11 @@ void Game::Render2DGUI()
             pickedVolumeTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_VOLUME)+":");
             pickedVolumeTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, volStr);
 
-            pickedAreaTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_AREA)+":");
-            pickedAreaTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, areaStr);
-
             pickedDensityTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_DENSITY)+":");
             pickedDensityTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, densStr);
+
+            pickedAreaTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_AREA)+":");
+            pickedAreaTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, areaStr);
 
             pickedTempTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_TEMP)+":");
             pickedTempTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, tempStr);
@@ -1213,52 +1287,52 @@ void Game::Render2DGUI()
         pickedNameTxt.setScaleAndPos(gfx.fontSizeMedium, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-6.f, 0.1f);
         gfx.DrawText(pickedNameTxt);
 
-        pickedTypeTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-280.f, gfx.windowHeight-70.f, 0.1f);
+        pickedTypeTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-70.f, 0.1f);
         pickedTypeTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-70.f, 0.1f);
         gfx.DrawText(pickedTypeTxt);
         gfx.DrawText(pickedTypeTxtVal);
 
-        pickedMassTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-280.f, gfx.windowHeight-100.f, 0.1f);
+        pickedMassTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-100.f, 0.1f);
         pickedMassTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-100.f, 0.1f);
         gfx.DrawText(pickedMassTxt);
         gfx.DrawText(pickedMassTxtVal);
 
-        pickedLumiTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-280.f, gfx.windowHeight-130.f, 0.1f);
+        pickedLumiTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-130.f, 0.1f);
         pickedLumiTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-130.f, 0.1f);
         gfx.DrawText(pickedLumiTxt);
         gfx.DrawText(pickedLumiTxtVal);
 
-        pickedRadiusTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-280.f, gfx.windowHeight-160.f, 0.1f);
+        pickedRadiusTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-160.f, 0.1f);
         pickedRadiusTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-160.f, 0.1f);
         gfx.DrawText(pickedRadiusTxt);
         gfx.DrawText(pickedRadiusTxtVal);
 
-        pickedVolumeTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-280.f, gfx.windowHeight-190.f, 0.1f);
+        pickedVolumeTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-190.f, 0.1f);
         pickedVolumeTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-190.f, 0.1f);
         gfx.DrawText(pickedVolumeTxt);
         gfx.DrawText(pickedVolumeTxtVal);
 
-        pickedAreaTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-280.f, gfx.windowHeight-220.f, 0.1f);
+        pickedAreaTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-220.f, 0.1f);
         pickedAreaTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-220.f, 0.1f);
         gfx.DrawText(pickedAreaTxt);
         gfx.DrawText(pickedAreaTxtVal);
 
-        pickedDensityTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-280.f, gfx.windowHeight-250.f, 0.1f);
+        pickedDensityTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-250.f, 0.1f);
         pickedDensityTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-250.f, 0.1f);
         gfx.DrawText(pickedDensityTxt);
         gfx.DrawText(pickedDensityTxtVal);
 
-        pickedTempTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-280.f, gfx.windowHeight-280.f, 0.1f);
+        pickedTempTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-280.f, 0.1f);
         pickedTempTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-280.f, 0.1f);
         gfx.DrawText(pickedTempTxt);
         gfx.DrawText(pickedTempTxtVal);
 
-        pickedDistTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-280.f, gfx.windowHeight-310.f, 0.1f);
+        pickedDistTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-310.f, 0.1f);
         pickedDistTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-310.f, 0.1f);
         gfx.DrawText(pickedDistTxt);
         gfx.DrawText(pickedDistTxtVal);
 
-        pickedAgeTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-280.f, gfx.windowHeight-340.f, 0.1f);
+        pickedAgeTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-340.f, 0.1f);
         pickedAgeTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-340.f, 0.1f);
         gfx.DrawText(pickedAgeTxt);
         gfx.DrawText(pickedAgeTxtVal);
@@ -1279,56 +1353,120 @@ void Game::Render2DGUI()
     gfx.openGL.StopTextRenderer();
 }
 
-void Game::RenderSprites()
+void Game::RenderSpaceGas()
 {
-    // render closer stars with OGL
-    RenderNearStars();
+    glm::vec3 rayOrig(10000.0-((globPos.x%10000)-((zonePos.x*0.5)+0.5)),
+                      10000.0-((globPos.y%10000)-((zonePos.y*0.5)+0.5)),
+                      10000.0-((globPos.z%10000)-((zonePos.z*0.5)+0.5)));
+    glm::vec3 gasColor(0.57f, 0.27f, 0.13f);
+    gfx.openGL.InitVolGasRender(gasColor, gfx.resolution, rayOrig, camera.Forward(), camera.Right(), camera.Up(), 0.5f);
+    gfx.DrawVolGas();
+}
 
-    // draw ray-traced frame as textured quad
+void Game::RenderStarFlare()
+{
+    // do lense flare if close enough to star
+    if (doLensFlare) {
+        gfx.openGL.InitFlareRender(loadedStarClr, lsScreenPos, lsLumiFrac, resolution.AspectRatio, glfwGetTime(), cdFrac, ctFrac, (FLARE_VIS_DEPTH-lsDistFrac)*FLARE_ADM);
+        gfx.DrawFrameGL();
+    }
+}
+
+void Game::OverlaySolSystem()
+{
+    // overlay ray-traced frame
     if (isStarLoaded) {
         gfx.openGL.InitFrameRender();
         gfx.DrawFrameRT();
     }
+}
 
-    // do lense flare if close enough to star
-    if (doLensFlare) {
-        gfx.openGL.InitFlareRender(loadedStarClr, lsScreenPos, lsLumiFrac, resolution.AspectRatio, glfwGetTime(), cdFrac, ctFrac, (FLARE_VIS_DEPTH-lsDistFrac)*FLARE_ADM);
-        gfx.DrawFrameTex();
-    }
+void Game::OverlayFarStars()
+{
+    // overlay frame drawn by OCL
+    gfx.openGL.InitFrameRender();
+    gfx.DrawFrameCL();
 }
 
 void Game::FinishFrameCL()
 {
 	// compute final pixel colors from frags
 	openCL.FF_Kernel.setArg(0, cl_fragBuff);
-	openCL.FF_Kernel.setArg(1, gfx.ClFrameMemory(0));
+	openCL.FF_Kernel.setArg(1, gfx.ClGlMemory(0));
 	openCL.FF_Kernel.setArg(2, rInfo);
 	openCL.FragsToFrame(gfx.windowWidth, gfx.windowHeight);
 	openCL.queue.finish();
-
-    //gfx.ReleaseGLBuffers(openCL);
-    gfx.BlitFrame();
 }
 
 void Game::FinishFrameRT()
 {
-	openCL.RFF_Kernel.setArg(0, cl_fragBuff);
-	openCL.RFF_Kernel.setArg(1, gfx.ClFrameMemory(1));
-	openCL.RFF_Kernel.setArg(2, rInfo);
-	openCL.FragsToFrameRT(gfx.windowWidth, gfx.windowHeight);
+    if (isStarLoaded) {
+        openCL.FF_Kernel.setArg(0, cl_fragBuff);
+        openCL.FF_Kernel.setArg(1, gfx.ClGlMemory(1));
+        openCL.FF_Kernel.setArg(2, rInfo);
+        openCL.FragsToFrame(gfx.windowWidth, gfx.windowHeight);
+        openCL.queue.finish();
+    }
+}
+
+void Game::ClearFragBuff()
+{
+	openCL.FB_Kernel.setArg(0, cl_fragBuff);
+	openCL.FB_Kernel.setArg(1, rInfo);
+	openCL.FillFragBuff(gfx.windowWidth, gfx.windowHeight);
 	openCL.queue.finish();
+}
+
+void Game::UpdatePhysics()
+{
+    if (isStarLoaded) {
+        uint32_t planet_index = 0;
+        double tc_secs = gameTimer.SecsCount();
+        /*openCL.UO_Kernel.setArg(0, cl_planetBuff);
+        openCL.UO_Kernel.setArg(1, cl_moonBuff);
+        openCL.UO_Kernel.setArg(2, loadedStar.position);
+        openCL.UO_Kernel.setArg(3, tc_secs);
+        openCL.UpdateOrbits(solSystem.planets);*/
+
+        for (cl_Planet& planet : planets)
+        {
+            double orbitFrac = tc_secs / planet.orbit_time;
+            planet.position = DVec3::OrbitRot(planet.orbit_rad, orbitFrac*PI_MUL_2).OrbitTilt(solSystem.plane).
+                              OrbitTilt(planet.orbit).VectAdd(loadedStarPos).vector;
+
+            for (cl_Moon& moon : moons[planet_index])
+            {
+                orbitFrac = tc_secs / moon.orbit_time;
+                moon.position = DVec3::OrbitRot(moon.orbit_rad*PLANET_MAG*0.1, orbitFrac*PI_MUL_2).
+                                OrbitTilt(moon.orbit).VectAdd(planet.position).vector;
+            }
+
+            if (planet.moons > 0)
+                openCL.queue.enqueueWriteBuffer(cl_moonBuff, CL_FALSE, sizeof(cl_Moon)*MAX_MOONS*planet_index, sizeof(cl_Moon)*planet.moons, moons[planet_index].data());
+
+            planet_index++;
+        }
+
+        openCL.queue.enqueueWriteBuffer(cl_planetBuff, CL_TRUE, 0, sizeof(cl_Planet)*planets.size(), planets.data());
+        openCL.queue.finish();
+    }
 }
 
 void Game::ComposeFrame()
 {
-    //TODO: gen planet textures/bump map (gl tex)
-    //TODO: render planet orbit paths (https://github.com/memononen/nanovg)
-    //TODO: adjust planet orbits to prevent overlapping
-    //TODO: enable planet orbits & rotation
-    //TODO: show elements on planets/moon
-    //TODO: render dust/gas clouds
-    //TODO: render asteroids
-    //TODO: use quaternions for rotation
+    //TODO: fix moon pop in/out (orbits inside planet)
+    //TODO: fix z-axis rotation for skybox
+    //TODO: add bloom to close stars
+    //TODO: procedural gas planet textures
+    //TODO: planet rings and craters
+    //TODO: moons cast shadows on planet
+    //TODO: gen planet bump maps
+    //TODO: render planet atmospheres
+    //TODO: render planet orbit paths (NanoVG?)
+    //TODO: enable planet rotation
+    //TODO: scan elements on planets/moon
+    //TODO: procedural asteroid fields
+    //TODO: use quaternions for camera rotation
     //TODO: full support for unicode font glyphs
 
 	// handle keyboard/mouse actions
@@ -1346,23 +1484,44 @@ void Game::ComposeFrame()
     // render distant stars using OCL
     RenderFarStars();
 
-    // compute final pixel colors for OCL frame
+    // save final pixel colors to OGL texture
     FinishFrameCL();
 
     // generate planets, moons, etc
     GenerateSolSystem();
 
+    // update object positions
+    UpdatePhysics();
+
     // ray-trace planets, moons, sun with OCL
     RenderSolSystem();
 
-    // finalize ray-traced frame texture
+    // save ray-traced image to a OGL texture
     FinishFrameRT();
 
     // make OCL release control of OGL memory
     gfx.ReleaseGLBuffers(openCL);
 
-    // render near stars and other sprites
-    RenderSprites();
+    // render galaxy skybox
+    gfx.DrawSkybox();
+
+    // draw small/far stars over skybox
+    OverlayFarStars();
+
+    // render closer stars with OGL
+    RenderNearStars();
+
+    // render volumetric space gas
+    RenderSpaceGas();
+
+    // copy frame to actual framebuffer
+    gfx.BlitFrame();
+
+    // overlay ray-traced solar system
+    OverlaySolSystem();
+
+    // render screen flare with shader
+    RenderStarFlare();
 
     // render 2D GUI components
     Render2DGUI();

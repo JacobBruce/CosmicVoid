@@ -119,7 +119,7 @@ struct cl_Star {
 	cl_float radius;
 	cl_float density;
 	cl_float volume;
-	cl_float area;
+    cl_float rot_time;
 	cl_float temp;
 	cl_RGB32 color;
 }; // 64 bytes
@@ -140,7 +140,7 @@ struct cl_Planet {
             cl_uchar type;
         };
     };
-    cl_float3 orbit;
+    cl_float2 orbit;
 	cl_float mass;
 	cl_float radius;
 	cl_float density;
@@ -153,6 +153,9 @@ struct cl_Planet {
 	cl_float orbit_rad;
 	cl_float eccentricity;
 	cl_float velocity;
+	cl_float atmos_dens;
+	cl_short atmos_dist;
+	cl_short atmos_type;
 }; // 96 bytes
 
 struct cl_Moon {
@@ -171,7 +174,7 @@ struct cl_Moon {
             cl_uchar type;
         };
     };
-    cl_float3 orbit;
+    cl_float2 orbit;
 	cl_float mass;
 	cl_float radius;
 	cl_float density;
@@ -184,10 +187,13 @@ struct cl_Moon {
 	cl_float orbit_rad;
 	cl_float eccentricity;
     cl_float velocity;
+	cl_float atmos_dens;
+	cl_short atmos_dist;
+	cl_short atmos_type;
 }; // 96 bytes
 
 struct cl_SolarSystem {
-	cl_double3 plane;
+	cl_double2 plane;
 	cl_ulong index;
 	cl_uint conflict;
 	cl_uint economy;
@@ -195,6 +201,10 @@ struct cl_SolarSystem {
 	cl_uint civ_count;
 	cl_uint moons;
 	cl_uint planets;
+	cl_uint stations;
+	cl_uint artifacts;
+	cl_uint anomalies;
+	cl_uint secrets;
 }; // 64 bytes
 
 /*struct cl_Galaxy {

@@ -3,14 +3,14 @@
 
 struct RGB24
 {
-    unsigned char blue;
-    unsigned char green;
     unsigned char red;
+    unsigned char green;
+    unsigned char blue;
 
-    RGB24() : blue(0), green(0), red(0) {}
+    RGB24() : red(0), green(0), blue(0) {}
 
     RGB24(unsigned char r, unsigned char g, unsigned char b) :
-        blue(b), green(g), red(r) {}
+        red(r), green(g), blue(b) {}
 };
 
 struct RGB32
@@ -19,18 +19,18 @@ struct RGB32
         cl_RGB32 rgba;
         #pragma pack(push,1)
         struct {
-            unsigned char blue;
-            unsigned char green;
             unsigned char red;
+            unsigned char green;
+            unsigned char blue;
             unsigned char alpha;
         };
         #pragma pack(pop)
     };
 
-    RGB32() : blue(0), green(0), red(0), alpha(255) {}
+    RGB32() : red(0), green(0), blue(0), alpha(255) {}
 
     RGB32(unsigned char r, unsigned char g, unsigned char b, unsigned char a) :
-        blue(b), green(g), red(r), alpha(a) {}
+        red(r), green(g), blue(b), alpha(a) {}
 };
 
 inline Vec3 RGB24toVec3(const RGB24 src)

@@ -9,6 +9,9 @@ struct SoilImage
     unsigned char* bytes;
     int width, height, channels;
     GLint format;
+
+    void Free()
+    { SOIL_free_image_data(bytes); }
 };
 
 class SoilPP
@@ -32,11 +35,29 @@ public:
             file_name.c_str(),
             SOIL_LOAD_AUTO,
             SOIL_CREATE_NEW_ID,
-            SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT
+            SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB
         );
         if (result == 0)
         {
             PrintLine("[SOIL2 Error] LoadGLTexture(): "+std::string(SOIL_last_result()));
+            exit(EXIT_FAILURE);
+        }
+        return result;
+    }
+
+    static GLuint LoadGLCubemap(const std::vector<std::string>& file_names)
+    {
+        GLuint result = SOIL_load_OGL_cubemap
+        (
+            file_names[0].c_str(), file_names[1].c_str(), file_names[2].c_str(),
+            file_names[3].c_str(), file_names[4].c_str(), file_names[5].c_str(),
+            SOIL_LOAD_AUTO,
+            SOIL_CREATE_NEW_ID,
+            SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB
+        );
+        if (result == 0)
+        {
+            PrintLine("[SOIL2 Error] LoadGLCubemap(): "+std::string(SOIL_last_result()));
             exit(EXIT_FAILURE);
         }
         return result;
@@ -52,22 +73,24 @@ public:
             result.bytes = SOIL_load_image(file_name.c_str(), &(result.width), &(result.height), &(result.channels), SOIL_LOAD_RGB);
             result.format = GL_RGB;
             if (result.channels != 3) {
-                PrintLine("[SoilPP Error] ReadImageFile(): invalid channel count in jpg");
+                PrintLine("[SoilPP Error] ReadImageFile(): invalid channel count in jpg ("+VarToStr(result.channels)+")");
                 image_error = true;
             }
         } else if (file_ext == "bmp") {
-            result.bytes = SOIL_load_image(file_name.c_str(), &(result.width), &(result.height), &(result.channels), SOIL_LOAD_RGB);
-            result.format = GL_RGB;
+            result.bytes = SOIL_load_image(file_name.c_str(), &(result.width), &(result.height), &(result.channels), SOIL_LOAD_RGBA);
+            result.format = GL_RGBA;
             if (result.channels != 3) {
-                PrintLine("[SoilPP Error] ReadImageFile(): invalid channel count in bmp");
+                PrintLine("[SoilPP Error] ReadImageFile(): invalid channel count in bmp ("+VarToStr(result.channels)+")");
                 image_error = true;
             }
         } else if (file_ext == "png") {
             result.bytes = SOIL_load_image(file_name.c_str(), &(result.width), &(result.height), &(result.channels), SOIL_LOAD_RGBA);
-            result.format = GL_RGBA;
-            if (result.channels != 4) {
-                PrintLine("[SoilPP Error] ReadImageFile(): invalid channel count in png");
+            if (result.channels <= 0 || result.channels > 4) {
+                PrintLine("[SoilPP Error] ReadImageFile(): invalid channel count in png ("+VarToStr(result.channels)+")");
                 image_error = true;
+            } else {
+                result.format = GL_RGBA;
+                result.channels = 4;
             }
         } else if (file_ext == "dds") {
             result.bytes = SOIL_load_image(file_name.c_str(), &(result.width), &(result.height), &(result.channels), SOIL_LOAD_AUTO);
@@ -76,7 +99,7 @@ public:
             } else if (result.channels == 4) {
                 result.format = GL_RGBA;
             } else {
-                PrintLine("[SoilPP Error] ReadImageFile(): invalid channel count in dds");
+                PrintLine("[SoilPP Error] ReadImageFile(): invalid channel count in dds ("+VarToStr(result.channels)+")");
                 image_error = true;
             }
         } else {

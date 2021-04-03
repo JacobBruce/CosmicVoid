@@ -55,9 +55,9 @@ public:
 	    uint64_t rnd1 = RandomLong(seed);
 	    uint64_t rnd2 = RandomLong(rnd1);
 	    uint64_t rnd3 = RandomLong(rnd2);
-	    result.x = RandDblFromLng(rnd1);
-	    result.y = RandDblFromLng(rnd2);
-	    result.z = RandDblFromLng(rnd3);
+	    result.x = DblFromLong(rnd1);
+	    result.y = DblFromLong(rnd2);
+	    result.z = DblFromLong(rnd3);
 	    return result;
 	}
 	inline float VectMag() const
@@ -248,17 +248,29 @@ public:
 			return false;
 		}
 	}
-	static DVec3 VectRnd(uint64_t seed)
+	static inline DVec3 VectRnd(uint64_t seed)
 	{
 	    DVec3 result;
 	    uint64_t rnd1 = RandomLong(seed);
 	    uint64_t rnd2 = RandomLong(rnd1);
 	    uint64_t rnd3 = RandomLong(rnd2);
-	    result.x = RandDblFromLng(rnd1);
-	    result.y = RandDblFromLng(rnd2);
-	    result.z = RandDblFromLng(rnd3);
+	    result.x = DblFromLong(rnd1);
+	    result.y = DblFromLong(rnd2);
+	    result.z = DblFromLong(rnd3);
 	    return result;
 	}
+	static inline DVec3 OrbitRot(const double rad, const double angle)
+	{
+	    return DVec3(cos(angle)*rad, 0.0, -sin(angle)*rad);
+	}
+    inline DVec3 OrbitTilt(const cl_float2& tilt) const
+	{
+        return VectRotX(tilt.s[0]).VectRotZ(tilt.s[1]);
+    }
+    inline DVec3 OrbitTilt(const cl_double2& tilt) const
+	{
+        return VectRotX(tilt.s[0]).VectRotZ(tilt.s[1]);
+    }
 	inline double VectMag() const
 	{
 		return sqrt((x*x) + (y*y) + (z*z));
@@ -373,6 +385,46 @@ public:
 	{
 		return !(*this == rhs);
 	}
+	/*inline DVec3 operator*(const DVec3& rhs) const
+	{
+		return DVec3(x*rhs.x, y*rhs.y, z*rhs.z);
+	}
+	inline DVec3 operator/(const DVec3& rhs) const
+	{
+		return DVec3(x/rhs.x, y/rhs.y, z/rhs.z);
+	}
+	inline DVec3 operator+(const DVec3& rhs) const
+	{
+		return DVec3(x+rhs.x, y+rhs.y, z+rhs.z);
+	}
+	inline DVec3 operator-(const DVec3& rhs) const
+	{
+		return DVec3(x-rhs.x, y-rhs.y, z-rhs.z);
+	}
+	inline DVec3 operator*(const cl_double3& rhs) const
+	{
+		return DVec3(x*rhs.s[0], y*rhs.s[1], z*rhs.s[2]);
+	}
+	inline DVec3 operator/(const cl_double3& rhs) const
+	{
+		return DVec3(x/rhs.s[0], y/rhs.s[1], z/rhs.s[2]);
+	}
+	inline DVec3 operator+(const cl_double3& rhs) const
+	{
+		return DVec3(x+rhs.s[0], y+rhs.s[1], z+rhs.s[2]);
+	}
+	inline DVec3 operator-(const cl_double3& rhs) const
+	{
+		return DVec3(x-rhs.s[0], y-rhs.s[1], z-rhs.s[2]);
+	}
+	inline bool operator==(const cl_double3 &rhs) const
+	{
+		return x == rhs.s[0] && y == rhs.s[1] && z == rhs.s[2];
+	}
+	inline bool operator!=(const cl_double3 &rhs) const
+	{
+		return !(*this == rhs);
+	}*/
 	inline void operator+=(const DVec3 &rhs)
 	{
 		x += rhs.x; y += rhs.y; z += rhs.z;

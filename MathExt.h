@@ -1,10 +1,12 @@
 #pragma once
 #include <cmath>
 #include <cfloat>
+#include <algorithm>
 
-#define HALF_PI 1.570796326794896
-#define PI		3.141592653589793
 #define TWO_PI	6.283185307179586
+#define HALF_PI 1.570796326794896
+#define PI 3.14159265358979323846
+#define DEG2RAD 0.01745329251994329576923 /* pi/180 */
 
 struct float2 {
 	float x;
@@ -82,8 +84,13 @@ inline void SwapVars(T& x1, T& x2)
 	x2 = temp;
 }
 
-inline double RandDblFromLng(uint64_t seed) {
-	return ((seed%2) ? 1.0 : -1.0) * ((seed % UINT_MAX) / (UINT_MAX-1.0));
+template <typename T>
+inline T clamp(const T& n, const T& lower, const T& upper) {
+  return std::max(lower, std::min(n, upper));
+}
+
+inline double DblFromLong(uint64_t seed) {
+	return ((seed%2) ? 1.0 : -1.0) * ((double)seed / std::numeric_limits<uint64_t>::max());
 }
 
 inline uint64_t RandomLong(uint64_t seed) {
@@ -91,6 +98,16 @@ inline uint64_t RandomLong(uint64_t seed) {
 	seed ^= seed << 25;
 	seed ^= seed >> 27;
 	return seed * 0x2545F4914F6CDD1D;
+}
+
+inline float smoothstep(float edge0, float edge1, float x) {
+    x = clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+    return x * x * (3.0f - 2.0f * x);
+}
+
+inline double smoothstep(double edge0, double edge1, double x) {
+    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+    return x * x * (3.0 - 2.0 * x);
 }
 
 inline uint32_t Index3Dto1D(const uint3& index, const uint32_t& span)

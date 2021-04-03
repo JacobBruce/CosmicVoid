@@ -91,7 +91,7 @@ namespace SCREEN {
         {160,  120,  4,  4,  ratio_4x3}
     };
 
-    inline Resolution GetProfile(uint32_t width, uint32_t height)
+    inline Resolution GetProfile(const uint32_t width, const uint32_t height)
     {
         for (uint32_t i=0; i < RA_SIZE; ++i)
         {

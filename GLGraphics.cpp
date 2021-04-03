@@ -2,8 +2,8 @@
 
 void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
 {
-    cl_int cl_errors[2];
-    gl_fill_clr = {0.0f, 0.0f, 0.0f, 1.0f};
+    cl_int cl_errors[3];
+    gl_fill_clr = {0.0f, 0.0f, 0.0f, 0.0f};
 
     // Initialize OpenGL
     openGL.Initialize();
@@ -19,6 +19,8 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
     // Create framebuffer for OpenCL
     glGenFramebuffers(1, &gl_fb_id);
     glGenRenderbuffers(1, &gl_rb_id);
+    glGenTextures(1, &gl_dtx_id);
+    glGenTextures(1, &gl_clt_id);
     glGenTextures(1, &gl_rtx_id);
     glGenTextures(1, &gl_tex_id);
 
@@ -27,13 +29,31 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
     glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA32F, windowWidth, windowHeight);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, gl_rb_id);
 
+    glBindTexture(GL_TEXTURE_2D, gl_dtx_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LESS);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_R_TO_TEXTURE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, windowWidth, windowHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gl_dtx_id, 0);
+
+    glBindTexture(GL_TEXTURE_2D, gl_clt_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, NULL);
+    glClearTexImage(gl_clt_id, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
+
     glBindTexture(GL_TEXTURE_2D, gl_rtx_id);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, NULL);
-    glClearTexSubImage(gl_rtx_id, 0, 0, 0, 0, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
+    glClearTexImage(gl_rtx_id, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
 
     glBindTexture(GL_TEXTURE_2D, gl_tex_id);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -41,8 +61,8 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, NULL);
-    glClearTexSubImage(gl_tex_id, 0, 0, 0, 0, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gl_tex_id, 0);
+    glClearTexImage(gl_tex_id, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
 
     gl_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (gl_status != GL_FRAMEBUFFER_COMPLETE) {
@@ -50,9 +70,9 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
         GLFW::error_exit(window);
     }
 
-    gl_memSet.push_back(cl::Memory(clCreateFromGLTexture(cl_con, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, gl_tex_id, &cl_errors[0])));
+    gl_memSet.push_back(cl::Memory(clCreateFromGLTexture(cl_con, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, gl_clt_id, &cl_errors[0])));
     gl_memSet.push_back(cl::Memory(clCreateFromGLTexture(cl_con, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, gl_rtx_id, &cl_errors[1])));
-    //gl_memSet.push_back(cl::Memory(clCreateFromGLBuffer(cl_con, CL_MEM_READ_WRITE, openGL.StarBuffer(), &cl_error)));
+    gl_memSet.push_back(cl::Memory(clCreateFromGLBuffer(cl_con, CL_MEM_READ_WRITE, openGL.StarBuffer(), &cl_errors[2])));
 
     for (uint32_t i=0; i < gl_memSet.size(); ++i) {
         if (cl_errors[i] != CL_SUCCESS)
@@ -65,11 +85,12 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
 
     gl_sb_id = openGL.SpriteBuffer();
 
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    glClearColor(gl_fill_clr.x, gl_fill_clr.y, gl_fill_clr.z, 1.0);
+    glClearColor(gl_fill_clr.x, gl_fill_clr.y, gl_fill_clr.z, gl_fill_clr.w);
     glActiveTexture(GL_TEXTURE0);
     glFinish();
 
@@ -82,7 +103,7 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
 	fontSizeHuge = fontSizeNormal * 1.5f;
 }
 
-const cl::Memory& GLGraphics::ClFrameMemory(cl_uint index)
+cl::Memory& GLGraphics::ClGlMemory(cl_uint index)
 {
     return gl_memSet[index];
 }
@@ -119,13 +140,13 @@ void GLGraphics::ReleaseGLBuffers(CL& openCL)
     try {
     #endif
     openCL.queue.enqueueReleaseGLObjects(&gl_memSet);
+    openCL.queue.finish();
     #if CL_DEBUG
     } catch (cl::Error& e) {
         PrintLine("[OpenCL Error] ("+VarToStr(e.err())+"): "+e.what());
         exit(EXIT_FAILURE);
     }
     #endif
-    openCL.queue.finish();
 }
 
 void GLGraphics::GetWindowSize(int* width, int* height)
@@ -139,13 +160,25 @@ void GLGraphics::SetWindowSize(int width, int height)
     windowHeight = height;
 
     glViewport(0, 0, windowWidth, windowHeight);
+    openGL.SetProjMatrix(windowWidth, windowHeight, cam.fov);
     openGL.SetProjMatrix(windowWidth, windowHeight);
+
+    resolution.x = windowWidth;
+    resolution.y = windowHeight;
 
     widthHalf = windowWidth / 2;
     heightHalf = windowHeight / 2;
     widthSpan = windowWidth - 1;
     heightSpan = windowHeight - 1;
+    hwRatio = (float)windowHeight / windowWidth;
     //TODO: stuff
+}
+
+void GLGraphics::UpdateFOV(const GLfloat foc_len)
+{
+    resolution.z = foc_len;
+	cam.CalcFOV(foc_len, widthHalf);
+    openGL.SetProjMatrix(windowWidth, windowHeight, cam.fov*hwRatio);
 }
 
 void GLGraphics::BeginFrame()
@@ -191,6 +224,12 @@ void GLGraphics::LoadTextures(const std::string tex_list)
     }
 }
 
+void GLGraphics::LoadSkyboxTex(const std::string tex_list)
+{
+    std::vector<std::string> texFiles(ReadFileLines(tex_list));
+    gl_sbt_id = SoilPP::LoadGLCubemap(texFiles);//openGL.LoadCubemap(texFiles);
+}
+
 void GLGraphics::SpriteConfig(cl_float4 color, cl_float2 position, float scale, float rotation, float depth)
 {
     static cl_SpriteData data;
@@ -219,7 +258,6 @@ void GLGraphics::DrawInstances(GLuint instance_count, GLuint vertex_count, GLuin
 
 void GLGraphics::DrawSprite(GLuint vertex_count)
 {
-    //glBindVertexArray(vao);
     glDrawArrays(GL_TRIANGLES, 0, vertex_count);
     #if GL_DEBUG
     if (GL::PrintErrors()) {
@@ -228,6 +266,36 @@ void GLGraphics::DrawSprite(GLuint vertex_count)
     }
     #endif
     //glFinish();
+}
+
+void GLGraphics::DrawVolGas()
+{
+    glBindTexture(GL_TEXTURE_2D, gl_tex_id);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, gl_dtx_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+    glActiveTexture(GL_TEXTURE0);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    #if GL_DEBUG
+    if (GL::PrintErrors()) {
+        PrintLine("Bad function: GLGraphics::DrawVolGas()");
+        exit(EXIT_FAILURE);
+    }
+    #endif
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_R_TO_TEXTURE);
+    //glFinish();
+}
+
+void GLGraphics::DrawSkybox()
+{
+    openGL.InitSkyboxRender(gl_sbt_id);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+    #if GL_DEBUG
+    if (GL::PrintErrors()) {
+        PrintLine("Bad function: GLGraphics::DrawSprite()");
+        exit(EXIT_FAILURE);
+    }
+    #endif
 }
 
 void GLGraphics::DrawText(const FreetypeGlText& text)
@@ -252,19 +320,24 @@ void GLGraphics::DrawText(const std::string& text, const glm::vec2& pos)
     #endif
 }
 
-void GLGraphics::DrawFrameTex()
+void GLGraphics::DrawFrameGL()
 {
-    glDisable(GL_DEPTH_TEST);
-    DrawSprite();
     glEnable(GL_DEPTH_TEST);
+    DrawSprite();
+}
+
+void GLGraphics::DrawFrameCL()
+{
+    glBindTexture(GL_TEXTURE_2D, gl_clt_id);
+    DrawSprite();
+    glClearTexImage(gl_clt_id, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
 }
 
 void GLGraphics::DrawFrameRT()
 {
-    glDisable(GL_DEPTH_TEST);
     glBindTexture(GL_TEXTURE_2D, gl_rtx_id);
     DrawSprite();
-    glEnable(GL_DEPTH_TEST);
+    glClearTexImage(gl_rtx_id, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
 }
 
 bool GLGraphics::CalcBounds(const float cam_foclen, const float& max_radius, const DVec3& position, uint4& result)

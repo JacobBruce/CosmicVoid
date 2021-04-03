@@ -1,10 +1,16 @@
 #include "Timer.h"
 
 Timer::Timer() : start(clock_::now()) {}
+Timer::Timer(std::chrono::time_point<clock_>& tp) : start(tp) {}
 
 void Timer::ResetTimer()
 {
 	start = clock_::now();
+}
+
+void Timer::SetStart(std::chrono::time_point<clock_>& tp)
+{
+	start = tp;
 }
 
 int64_t Timer::NanoCount() const
@@ -20,4 +26,9 @@ int64_t Timer::MicroCount() const
 double Timer::MilliCount() const
 {
 	return (double)MicroCount() * 1e-3;
+}
+
+double Timer::SecsCount() const
+{
+	return (double)MicroCount() * 1e-6;
 }

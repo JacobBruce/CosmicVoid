@@ -25,8 +25,15 @@
 #define ISL_DIST_MULT   0.00000005
 #define PLANET_MAG      1000.0f
 #define STAR_MAG        10.0f
-#define STAR_MAX_TEMP   9.188e26
 #define SCAN_TIME_MS    3000.0
+#define WATER_ALT_DIF   0.16
+#define WATER_ALT_MAX   0.08
+
+#define MOON_TEMP       100.0f
+#define LAVA_MIN_TEMP   1000.0f
+#define FREEZING_TEMP   273.15f
+#define BOILING_TEMP    373.15f
+#define STAR_MAX_TEMP   9.188e26
 
 #define EARTH_AGE       4543.0f
 #define EARTH_MASS      5.972e24
@@ -41,6 +48,17 @@
 
 #define MAX_PLANETS     10
 #define MAX_MOONS       4
+#define MAX_THREADS     2
+
+#define PLANET_TEX_W    1000
+#define PLANET_TEX_H    500
+#define TEX_GEN_DELAY   100
+#define TEX_COL_DELAY   10
+
+#define PI_MUL_4o3      4.18879020478639
+#define PI_MUL_4        12.5663706143591
+#define PI_MUL_2        6.28318530717958
+#define PI_HALF		    1.57079632679489
 
 #define IBUFFER_OFFSET  999
 #define IBUFFER_SIZE    10000

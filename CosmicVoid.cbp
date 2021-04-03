@@ -56,7 +56,6 @@
 			<Add library="png16" />
 			<Add library="bz2" />
 			<Add library="z" />
-			<Add library="freetype" />
 			<Add library="glib-2.0" />
 			<Add library="soil2" />
 			<Add library="opencl" />
@@ -67,6 +66,7 @@
 			<Add library="gdi32" />
 			<Add library="graphite2" />
 			<Add library="stdc++" />
+			<Add library="freetype" />
 			<Add directory="C:/Program Files (x86)/AMD APP SDK/2.9-1/lib/x86_64" />
 			<Add directory="vendor/soil2/lib/windows" />
 			<Add directory="vendor/freetype-gl/lib" />
@@ -104,6 +104,9 @@
 		<Unit filename="freetype-gl-cpp.h" />
 		<Unit filename="freetype-mat4.h" />
 		<Unit filename="main.cpp" />
+		<Unit filename="mapgen/Clouds.h" />
+		<Unit filename="mapgen/GasPlanet.h" />
+		<Unit filename="mapgen/Planet.h" />
 		<Extensions>
 			<code_completion />
 			<envvars />

@@ -122,6 +122,24 @@ inline std::string FormatFltStr(std::string str)
     }
 }
 
+inline std::string FormatSecStr(float time_val)
+{
+    std::string unitStr = LANG(STR_SECONDS);
+    if (time_val > 120.0f) {
+        time_val /= 60;
+        unitStr = LANG(STR_MINUTES);
+        if (time_val > 120.0f) {
+            time_val /= 60;
+            unitStr = LANG(STR_HOURS);
+            if (time_val > 48.0f) {
+                time_val /= 24;
+                unitStr = LANG(STR_DAYS);
+            }
+        }
+    }
+    return FormatFltStr(VarToStr(time_val)) + " " + unitStr;
+}
+
 inline std::string StarTypeStr(unsigned char type)
 {
     switch (type) {

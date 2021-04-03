@@ -1,19 +1,21 @@
 #pragma once
+#include <cstdlib>
+#include <string>
+#include <iostream>
+#include <fstream>
+#include <algorithm>
+#include <thread>
+#include <atomic>
 #include "GLGraphics.h"
 #include "CLTypes.h"
 #include "Keyboard.h"
 #include "Mouse.h"
 #include "Timer.h"
-#include "Camera.h"
 #include "Profiles.h"
 #include "Sound.h"
-#include <time.h>
-#include <cstdlib>
-#include <string>
-#include <math.h>
-#include <iostream>
-#include <fstream>
-#include <algorithm>
+#include "mapgen/Clouds.h"
+#include "mapgen/Planet.h"
+#include "mapgen/GasPlanet.h"
 
 class Game
 {
@@ -27,9 +29,14 @@ private:
 	void RenderSolSystem();
 	void RenderFarStars();
 	void RenderNearStars();
-	void RenderSprites();
+	void RenderSpaceGas();
+	void RenderStarFlare();
+	void UpdatePhysics();
 	void FinishFrameCL();
 	void FinishFrameRT();
+	void ClearFragBuff();
+	void OverlaySolSystem();
+	void OverlayFarStars();
 	void UpdateCamera();
 	void HandleInput();
 	void BeginActions();
@@ -58,13 +65,20 @@ private:
 	cl::Buffer cl_volatileBuff;
 	cl::Buffer cl_idatSizesBuff;
 	cl::Buffer cl_indexBuff;
-	cl::BufferGL gl_idatBuff;
+	//cl::BufferGL gl_idatBuff;
+
+	std::vector<cl::Image2D> cl_textures;
+	std::vector<double**> heightMaps;
+	std::vector<RGB32*> planetTexs;
+    std::vector<std::thread> threads;
+    std::atomic<int> genJobCount;
 
 	std::vector<std::vector<cl_Moon>> moons;
 	std::vector<cl_Planet> planets;
 	std::vector<cl_InstanceData> instList;
 	std::vector<std::pair<double,uint8_t>> pDistList;
 	std::vector<std::pair<double,uint8_t>> mDistList;
+	std::pair<uint64_t,uint64_t> sysSeeds;
 	cl_SolarSystem solSystem;
 	cl_Star loadedStar;
 	cl_Star pickedStar;
@@ -84,6 +98,7 @@ private:
 	uint64_t loadedGlobID;
 	uint64_t pickedGlobID;
 	int32_t sub_rays;
+	int32_t genThreadJobs;
 	int32_t pickedStarIndex;
 	int32_t pickedPlanetIndex;
 	uint32_t nearestIndex;
@@ -92,7 +107,6 @@ private:
 	uint32_t pixCount, fragCount;
 	uint32_t heightSpan, widthSpan;
 	uint32_t heightRays, widthRays;
-	uint32_t heightHalf, widthHalf;
 	float maxX, minX, maxY, minY;
 	float objDist, dX, dY;
 	float cdFrac, ctFrac;
@@ -121,6 +135,7 @@ private:
 	double deltaTime;
 	Timer deltaTimer;
 	Timer scanTimer;
+	Timer gameTimer;
 
 	DVec3 zonePos;
     DVec3 loadedStarPos;
