@@ -1171,7 +1171,7 @@ __global Star* star_buffer, __global uint* loaded_star)
 			species = LifeLvlToEnum(life_level) ? seeds.z % 1+MAX_MILL_SPECIES : 0;
 		} else if (lifeType < TYPE_I_CIV) {
 			function = seeds.x % 4;
-			life_level = fmin(seeds.y % (planet.life_level-64),
+			life_level = fmin((float)(seeds.y % (planet.life_level-64)),
 						 (seeds.y % habitability) * fmin(1.0f, age.data / EARTH_AGE));
 			species = (seeds.z % life_level) * LifeLvlToEnum(life_level) * 0.1f;
 			life_level = (function>0) ? planet.life_level : life_level;
