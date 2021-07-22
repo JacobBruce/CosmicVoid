@@ -6,7 +6,7 @@ OpenCL does the ray-tracing required at fast enough speeds since we only need to
 
 ## DEFAULT CONTROLS:
 
-Control settings can be changed in the settings.cfg file. Click a star, planet, or moon to select it and L to lock onto it. WASD for movement, up and down keys for vertical movement, page up to increase speed, page down to decrease speed. You'll need to decrease a lot to enter a solar system, and I haven't yet animated planet orbits so the planets will just be lined up next to the star. Distances are to scale but planet sizes are increased by 1000x otherwise it's nearly impossible to find them in a solar system, but that setting can be changed fairly easily by editing Resource.h and also the compute.cl kernel.
+Control settings can be changed in the settings.cfg file. Scroll lock will enable/disable mouse control. Click a star, planet, or moon to select it and L to lock onto it. WASD for movement, up and down keys for vertical movement, page up to increase speed, page down to decrease speed. You'll need to decrease a lot to enter a solar system, and planets will be a bit hard to find even though they are unrealistically enlarged. Planet sizes and other settings can be changed by editing Resource.h and the compute.cl kernel.
 
 ## DEPENDENCIES:
 
@@ -39,9 +39,9 @@ Usually you can create a makefile with cmake and then use the `mingw32-make` com
 
 To build Freetype GL configure cmake so that the FreeType, GLFW, and GLEW paths link to the static mingw64 libraries.
  
-Build SoLoud using the cmake files in the contrib folder and use SOLOUD_BACKEND_WINMM.
+Build SoLoud using the cmake files in the contrib folder and with SOLOUD_BACKEND_WINMM defined.
 
-HarfBuzz should be compiled using only the freetype, glib, and graphite2 dependencies, and ensure GRAPHITE2_STATIC is defined.
+HarfBuzz should be built using only the freetype, glib, and graphite2 dependencies, and ensure GRAPHITE2_STATIC is defined.
 
 Also make sure the freetype, glib, and graphite2 paths point to the static mingw64 library files and not the .dll.a files.
 
