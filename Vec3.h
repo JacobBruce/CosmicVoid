@@ -66,11 +66,11 @@ public:
 	}
 	inline float VectSqrd(const Vec3& v) const
 	{
-		return pow(v.x-x, 2) + pow(v.y-y, 2) + pow(v.z-z, 2);
+		return pow(v.x-x, 2.0) + pow(v.y-y, 2.0) + pow(v.z-z, 2.0);
 	}
 	inline float VectDist(const Vec3& v) const
 	{
-		return sqrt(pow(v.x-x, 2) + pow(v.y-y, 2) + pow(v.z-z, 2));
+		return sqrt(pow(v.x-x, 2.0) + pow(v.y-y, 2.0) + pow(v.z-z, 2.0));
 	}
 	inline float VectDot(const Vec3& v) const
 	{
@@ -82,7 +82,7 @@ public:
 	}
 	inline Vec3 VectRefl(Vec3& norm) const
 	{
-		return ((norm * -2) * VectDot(norm)).VectAdd(*this);
+		return ((norm * -2.0) * VectDot(norm)).VectAdd(*this);
 	}
 	inline Vec3 VectNorm() const
 	{
@@ -277,11 +277,11 @@ public:
 	}
 	inline double VectSqrd(const DVec3& v) const
 	{
-		return pow(v.x-x, 2) + pow(v.y-y, 2) + pow(v.z-z, 2);
+		return pow(v.x-x, 2.0) + pow(v.y-y, 2.0) + pow(v.z-z, 2.0);
 	}
 	inline double VectDist(const DVec3& v) const
 	{
-		return sqrt(pow(v.x-x, 2) + pow(v.y-y, 2) + pow(v.z-z, 2));
+		return sqrt(pow(v.x-x, 2.0) + pow(v.y-y, 2.0) + pow(v.z-z, 2.0));
 	}
 	inline double VectDot(const DVec3& v) const
 	{
@@ -293,7 +293,7 @@ public:
 	}
 	inline DVec3 VectRefl(DVec3& norm) const
 	{
-		return ((norm * -2) * VectDot(norm)).VectAdd(*this);
+		return ((norm * -2.0) * VectDot(norm)).VectAdd(*this);
 	}
 	inline DVec3 VectNorm() const
 	{

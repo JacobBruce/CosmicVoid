@@ -49,12 +49,13 @@ struct cl_RenderInfo
 {
 	cl_CamInfo cam_info;
 	cl_double delta_time;
+	cl_double game_time;
 	cl_uint3 zone_offset;
-	cl_uint pixels_X;
-	cl_uint pixels_Y;
-	cl_uint half_X;
-	cl_uint half_Y;
 	cl_uint rand_int;
+	cl_ushort pixels_X;
+	cl_ushort pixels_Y;
+	cl_ushort half_X;
+	cl_ushort half_Y;
 	cl_AAInfo aa_info;
 }; // 256 bytes
 
@@ -144,7 +145,7 @@ struct cl_Planet {
 	cl_float mass;
 	cl_float radius;
 	cl_float density;
-	cl_float volume;
+	cl_float gravity;
 	cl_float area;
 	cl_float temp;
 	cl_float water_frac;
@@ -153,9 +154,8 @@ struct cl_Planet {
 	cl_float orbit_rad;
 	cl_float eccentricity;
 	cl_float velocity;
-	cl_float atmos_dens;
-	cl_short atmos_dist;
-	cl_short atmos_type;
+	cl_float atmos_radi;
+	cl_RGB32 atmos_spec;
 }; // 96 bytes
 
 struct cl_Moon {
@@ -178,7 +178,7 @@ struct cl_Moon {
 	cl_float mass;
 	cl_float radius;
 	cl_float density;
-	cl_float volume;
+	cl_float gravity;
 	cl_float area;
 	cl_float temp;
 	cl_float water_frac;
@@ -187,9 +187,8 @@ struct cl_Moon {
 	cl_float orbit_rad;
 	cl_float eccentricity;
     cl_float velocity;
-	cl_float atmos_dens;
-	cl_short atmos_dist;
-	cl_short atmos_type;
+	cl_float atmos_radi;
+	cl_RGB32 atmos_spec;
 }; // 96 bytes
 
 struct cl_SolarSystem {

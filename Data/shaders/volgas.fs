@@ -74,11 +74,10 @@ float RayMarch(vec3 origin, vec3 step_ray, int step_limit, float dens_limit, flo
 			chit = false;
 		}
 
-        if (result > dens_limit) return 1.0;
+        if (result > dens_limit) break;
     }
     
-	result *= dens_div;
-    return result;
+    return result * dens_div;
 }
 
 void main()

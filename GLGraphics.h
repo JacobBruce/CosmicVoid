@@ -4,6 +4,7 @@
 #include "OpenCL.h"
 #include "Camera.h"
 #include "Colors.h"
+#include "Profiles.h"
 #include <assert.h>
 
 class GLGraphics
@@ -28,11 +29,14 @@ public:
 	void DrawSprite(GLuint vertex_count=6);
     void DrawText(const FreetypeGlText& text);
     void DrawText(const std::string& text, const glm::vec2& pos);
+    void DrawStarFlare();
 	void DrawVolGas();
     void DrawSkybox();
-    void DrawFrameGL();
+    //void DrawFrameGL();
     void DrawFrameCL();
     void DrawFrameRT();
+    void DrawDimFlare();
+    void DrawBlurFlare();
     bool CalcBounds(const float cam_foclen, const float& max_radius, const DVec3& position, uint4& result);
 
 private:
@@ -42,11 +46,12 @@ private:
 	GLuint		gl_sb_id;
 	GLuint      gl_dtx_id;
 	GLuint      gl_rtx_id;
+	GLuint      gl_ftx_id;
 	GLuint      gl_tex_id;
+	GLuint      gl_ptt_id;
 	GLuint		gl_clt_id;
 	GLuint      gl_sbt_id;
 	GLenum		gl_status;
-	cl_context	cl_con;
 	std::vector<cl::Memory> gl_memSet;
 
 public:
@@ -54,6 +59,8 @@ public:
     GLcam cam;
 	GLFWwindow*	window;
 	glm::vec3 resolution;
+	SCREEN::Resolution profile;
+    float2 pixFrac;
 	int	windowWidth;
 	int	windowHeight;
 	int	widthHalf;

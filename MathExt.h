@@ -89,6 +89,10 @@ inline T clamp(const T& n, const T& lower, const T& upper) {
   return std::max(lower, std::min(n, upper));
 }
 
+inline float FltFromLong(uint64_t seed) {
+	return (float)seed / std::numeric_limits<uint64_t>::max();
+}
+
 inline double DblFromLong(uint64_t seed) {
 	return ((seed%2) ? 1.0 : -1.0) * ((double)seed / std::numeric_limits<uint64_t>::max());
 }

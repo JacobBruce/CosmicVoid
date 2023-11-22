@@ -67,12 +67,11 @@ Game::Game(GLFWwindow* window, KeyboardServer& kServer, MouseServer& mServer)
 	// Load material properties library
 	//matSet.Load("Data\\materials.list");
 
-	// Get window resolution profile
-    resolution = SCREEN::GetProfile(gfx.windowWidth, gfx.windowHeight);
-
 	// set camera sensitivity based on settings
 	camera.sensitivity = stof(GLOBALS::config_map["MOUSE_SENSI"]);
+
 	movementSpeed = 4.73e13;
+	timeSpeed = 1.0;
 
 	srand(time(NULL));
 	globPos.x = 1321122;//rand() % GALAXY_SPAN;
@@ -110,47 +109,75 @@ Game::Game(GLFWwindow* window, KeyboardServer& kServer, MouseServer& mServer)
 	pDistList.resize(MAX_PLANETS);
 	mDistList.resize(MAX_MOONS);
 
-	heightMaps.resize(MAX_PLANETS);
+	planetMaps.resize(MAX_PLANETS);
 	planetTexs.resize(MAX_PLANETS);
+	moonMaps.resize(MAX_PLANETS*MAX_MOONS);
+	moonTexs.resize(MAX_PLANETS*MAX_MOONS);
 
+	cl_pmapBuffs.reserve(MAX_PLANETS);
+	cl_planetTexs.reserve(MAX_PLANETS);
+	cl_mmapBuffs.reserve(MAX_PLANETS*MAX_MOONS);
+	cl_moonTexs.reserve(MAX_PLANETS*MAX_MOONS);
     threads.reserve(MAX_PLANETS);
 
 	// allocate memory on GPU for pixel fragment buffer
-	cl_fragBuff = cl::Buffer(openCL.context, CL_MEM_WRITE_ONLY, sizeof(cl_RGB32)*fragCount);
+	cl_fragBuff = cl::Buffer(openCL.gpu_context, CL_MEM_WRITE_ONLY, sizeof(cl_RGB32)*fragCount);
 
 	// allocate memory on GPU for system buffer
-	cl_systemBuff = cl::Buffer(openCL.context, CL_MEM_READ_WRITE, sizeof(cl_SolarSystem));
+	cl_systemBuff = cl::Buffer(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(cl_SolarSystem));
 
 	// allocate memory on GPU for moon buffer
-	cl_moonBuff = cl::Buffer(openCL.context, CL_MEM_READ_WRITE, sizeof(cl_Moon)*MAX_MOONS*MAX_PLANETS);
+	cl_moonBuff = cl::Buffer(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(cl_Moon)*MAX_MOONS*MAX_PLANETS);
 
 	// allocate memory on GPU for planet buffer
-	cl_planetBuff = cl::Buffer(openCL.context, CL_MEM_READ_WRITE, sizeof(cl_Planet)*MAX_PLANETS);
+	cl_planetBuff = cl::Buffer(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(cl_Planet)*MAX_PLANETS);
 
 	// allocate memory on GPU for star buffer
-	cl_starBuff = cl::Buffer(openCL.context, CL_MEM_READ_WRITE, sizeof(cl_Star)*std::pow(SECTOR_SPAN,3));
+	cl_starBuff = cl::Buffer(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(cl_Star)*std::pow(SECTOR_SPAN,3));
 
 	// allocate memory on GPU for intersection buffer (use to draw depth tex, deferred ray shading, etc)
-	//cl_intersectBuff = cl::Buffer(openCL.context, CL_MEM_WRITE_ONLY, sizeof(cl_RayIntersect)*fragCount);
+	//cl_intersectBuff = cl::Buffer(openCL.gpu_context, CL_MEM_WRITE_ONLY, sizeof(cl_RayIntersect)*fragCount);
 
 	// allocate memory on GPU for write-only volatile buffer
-	cl_volatileBuff = cl::Buffer(openCL.context, CL_MEM_WRITE_ONLY, sizeof(cl_uint));
+	cl_volatileBuff = cl::Buffer(openCL.gpu_context, CL_MEM_WRITE_ONLY, sizeof(cl_uint));
 
 	// allocate memory on GPU for atomic instance counters
-	cl_idatSizesBuff = cl::Buffer(openCL.context, CL_MEM_READ_WRITE, sizeof(cl_uint)*10);
+	cl_idatSizesBuff = cl::Buffer(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(cl_uint)*10);
 
 	// allocate memory on GPU for loaded star index buffer
-	cl_indexBuff = cl::Buffer(openCL.context, CL_MEM_READ_WRITE, sizeof(cl_uint)*10);
+	cl_indexBuff = cl::Buffer(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(cl_uint)*10);
+
+    // allocate memory on GPU for render info buffer
+    //cl_renderInfoBuff = cl::Buffer(openCL.gpu_context, CL_MEM_READ_ONLY, sizeof(cl_RenderInfo));
 
 	// allocate memory on GPU for mouse position buffer
-	cl_mousePosBuff = cl::Buffer(openCL.context, CL_MEM_READ_WRITE, sizeof(cl_float2));
+	//cl_mousePosBuff = cl::Buffer(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(cl_float2));
 
-	for (int p=0; p<MAX_PLANETS; ++p) {
-        planetTexs[p] = new RGB32[PLANET_TEX_W*PLANET_TEX_H];
-        heightMaps[p] = new double*[PLANET_TEX_W];
-        for (int m=0; m<PLANET_TEX_W; ++m) {
-            heightMaps[p][m] = new double[PLANET_TEX_H];
+	// allocate memory on GPU for first water normal map buffer
+	//cl_water1NormBuff = cl::Buffer(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(cl_float4)*PLANET_TEX_W*PLANET_TEX_H);
+
+	// allocate memory on GPU for second water normal map buffer
+	//cl_water2NormBuff = cl::Buffer(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(cl_float4)*PLANET_TEX_W*PLANET_TEX_H);
+
+	// allocate memory on GPU for tempory normal map buffer
+	cl_planetNormBuff = cl::Buffer(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(cl_float4)*PLANET_TEX_W*PLANET_TEX_H);
+
+	// allocate memory on GPU for tempory normal map buffer
+	cl_moonNormBuff = cl::Buffer(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(cl_float4)*MOON_TEX_W*MOON_TEX_H);
+
+	try {
+        for (uint32_t p=0; p<MAX_PLANETS; ++p) {
+            planetTexs[p] = new RGB32[PLANET_TEX_W*PLANET_TEX_H];
+            planetMaps[p] = new float4[PLANET_TEX_W*PLANET_TEX_H];
+            for (uint32_t m=0; m<MAX_MOONS; ++m) {
+                uint32_t moonIndex = p * MAX_MOONS + m;
+                moonTexs[moonIndex] = new RGB32[MOON_TEX_W*MOON_TEX_H];
+                moonMaps[moonIndex] = new float4[MOON_TEX_W*MOON_TEX_H];
+            }
         }
+	} catch(...) {
+        PrintLine("ERROR: not enough system memory, exiting...");
+        exit(EXIT_FAILURE);
 	}
 
 	cl::ImageFormat imgFormat;
@@ -158,19 +185,35 @@ Game::Game(GLFWwindow* window, KeyboardServer& kServer, MouseServer& mServer)
 	imgFormat.image_channel_order = CL_RGBA;
 
 	try {
-	    for (size_t p=0; p<MAX_PLANETS; ++p)
-            cl_textures.push_back(cl::Image2D(openCL.context,
-            CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, imgFormat, PLANET_TEX_W, PLANET_TEX_H));
+	    for (size_t p=0; p<MAX_PLANETS; ++p) {
+            // allocate memory on GPU for planet textures
+            cl_planetTexs.emplace_back(openCL.gpu_context,
+            CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, imgFormat, PLANET_TEX_W, PLANET_TEX_H);
+            // allocate memory on GPU for terrain hight and normal map buffers
+            cl_pmapBuffs.emplace_back(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(float4)*PLANET_TEX_W*PLANET_TEX_H);
+            for (uint32_t m=0; m<MAX_MOONS; ++m) {
+                //uint32_t moonIndex = p * MAX_MOONS + m;
+                // allocate memory on GPU for moon textures
+                cl_moonTexs.emplace_back(openCL.gpu_context,
+                CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, imgFormat, MOON_TEX_W, MOON_TEX_H);
+                // allocate memory on GPU for terrain hight and normal map buffers
+                cl_mmapBuffs.emplace_back(openCL.gpu_context, CL_MEM_READ_WRITE, sizeof(float4)*MOON_TEX_W*MOON_TEX_H);
+            }
+	    }
     } catch (cl::Error& e) {
         PrintLine("[OpenCL Error] ("+VarToStr(e.err())+"): "+e.what());
         exit(EXIT_FAILURE);
     }
 
+    // sender render info to GPU
+    //openCL.WriteToBuffer(cl_renderInfoBuff, &rInfo, sizeof(cl_RenderInfo));
+
 	// generate stars for surrounding zones
-	openCL.GS_Kernel.setArg(0, cl_starBuff);
-	openCL.GS_Kernel.setArg(1, rInfo);
-	openCL.GenStars();
+	openCL.GenStars(cl_starBuff, rInfo);
 	openCL.queue.finish();
+	// generate water normal maps for oceans
+	//openCL.GenWaterMap(PLANET_TEX_W, PLANET_TEX_H, 1000.f, WAVE_SCALE, 3, cl_water1NormBuff);
+	//openCL.GenWaterMap(PLANET_TEX_W, PLANET_TEX_H, 9000.f, WAVE_SCALE, 3, cl_water2NormBuff);
 }
 
 
@@ -178,6 +221,7 @@ Game::~Game(){}
 
 void Game::Go()
 {
+    gameTime = gameTimer.SecsCount() * timeSpeed;
 	deltaTime = deltaTimer.MilliCount();
 	deltaTimer.ResetTimer();
 	gfx.BeginFrame();
@@ -205,8 +249,49 @@ void Game::ApplyKeyCodes()
 
 void Game::HandleInput()
 {
-	// key for exiting game
-	if (kbd.KeyIsPressed(GLFW_KEY_ESCAPE)) exitGame = true;
+	KeyEvent ke = kbd.ReadKey();
+	if (ke.IsPress()) {
+		switch (ke.GetCode()) {
+		case GLFW_KEY_SCROLL_LOCK:
+			gfx.ToggleCursorLock();
+			break;
+        case GLFW_KEY_ESCAPE:
+            exitGame = true;
+            break;
+		default: break;
+		}
+	} else if (ke.IsRelease()) {
+        // key for locking onto objects
+        if (KEY_MAP(KEY_TARG_LOCK) == ke.GetCode()) {
+            if (starPicked || planetPicked) {
+                camLock = true;
+                camLocked = false;
+                scanLocked = false;
+                showScanStats = false;
+                sound.ForcePlay(Sounds::LOCKING_TARGET);
+            }
+        // key for analyzing locked object
+        } else if (KEY_MAP(KEY_TARG_SCAN) == ke.GetCode()) {
+            if (planetPicked && camLocked) {
+                scanTimer.ResetTimer();
+                scanLocked = true;
+                showScanStats = false;
+                sound.ForcePlay(Sounds::ANALYZING_PLANET);
+            }
+        } else if (KEY_MAP(KEY_AUTO_PILOT) == ke.GetCode()) {
+            if (apilotLocked) {
+                apilotLocked = false;
+                sound.ForcePlay(Sounds::AUTOPILOT_DISENGAGED);
+            } else if ((starPicked || planetPicked) && camLocked) {
+                apilotLocked = true;
+                apilotDist = camera.position.VectDist(starPicked ? pickedStar.position : pickedPlanet.position);
+                apilotTarg = starPicked ? pickedStar.radius*STAR_MAG*5.0 : pickedPlanet.radius*PLANET_MAG*5.0;
+                sound.ForcePlay(Sounds::AUTOPILOT_ENGAGED);
+            }
+        }
+	}
+
+	if (apilotLocked) return;
 
 	// keys for left and right tilt
 	if (kbd.KeyIsPressed(KEY_MAP(KEY_MOVE_TILTR))) {
@@ -246,38 +331,16 @@ void Game::HandleInput()
 
 	// keys for camera speed adjustment
 	if (kbd.KeyIsPressed(GLFW_KEY_PAGE_UP)) {
-		movementSpeed += std::min(movementSpeed * 1.01, 1e12);
+		movementSpeed += std::min(movementSpeed * 0.01, 1e12);
 	} else if (kbd.KeyIsPressed(GLFW_KEY_PAGE_DOWN)) {
 		movementSpeed -= movementSpeed * 0.01;
 	}
 
-	KeyEvent ke = kbd.ReadKey();
-	if (ke.IsPress()) {
-		switch (ke.GetCode()) {
-		case GLFW_KEY_SCROLL_LOCK:
-			gfx.ToggleCursorLock();
-			break;
-		default: break;
-		}
-	} else if (ke.IsRelease()) {
-        // key for locking onto objects
-        if (KEY_MAP(KEY_TARG_LOCK) == ke.GetCode()) {
-            if (starPicked || planetPicked) {
-                camLock = true;
-                camLocked = false;
-                scanLocked = false;
-                showScanStats = false;
-                sound.ForcePlay(Sounds::LOCKING_TARGET);
-            }
-        // key for analyzing locked object
-        } else if (KEY_MAP(KEY_TARG_SCAN) == ke.GetCode()) {
-            if (planetPicked && camLocked) {
-                scanTimer.ResetTimer();
-                scanLocked = true;
-                showScanStats = false;
-                sound.ForcePlay(Sounds::ANALYZING_PLANET);
-            }
-        }
+	// keys for time speed adjustment
+	if (kbd.KeyIsPressed(GLFW_KEY_PERIOD)) {
+		timeSpeed += std::min(timeSpeed * 0.01, 1e10);
+	} else if (kbd.KeyIsPressed(GLFW_KEY_COMMA)) {
+		timeSpeed -= timeSpeed * 0.01;
 	}
 
 	// handle mouse events
@@ -334,39 +397,51 @@ void Game::UpdateCamera()
     static double xza_abs, yza_abs;
 	static double xza_start = 0.0;
 	static double yza_start = 0.0;
+	static double moveDist = 0.0;
     // move camera towards locked object
-    if (camLock && (starPicked || planetPicked)) {
+    if (starPicked || planetPicked) {
+        if (camLock) {
 
-        xz_angle = std::atan2(pickedPos.z,pickedPos.x) - ATAN2_1_0;
-        yz_angle = std::atan2(pickedPos.z,pickedPos.y) - ATAN2_1_0;
-        xza_abs = std::abs(xz_angle);
-        yza_abs = std::abs(yz_angle);
+            xz_angle = std::atan2(pickedPos.z,pickedPos.x) - ATAN2_1_0;
+            yz_angle = std::atan2(pickedPos.z,pickedPos.y) - ATAN2_1_0;
+            xza_abs = std::abs(xz_angle);
+            yza_abs = std::abs(yz_angle);
 
-        if (xza_start == 0.0 && yza_start == 0.0) {
-            xza_start = std::abs(xz_angle);
-            yza_start = std::abs(yz_angle);
-        }
-
-        lockProgress = std::min(2.0f, float((xza_abs / xza_start) + (yza_abs / yza_start)));
-
-        if (xza_abs < 0.0015 && yza_abs < 0.0015) {
-            camera.orientation.x += yz_angle;
-            camera.orientation.y += xz_angle;
-            xza_start = 0.0;
-            yza_start = 0.0;
-            camLock = false;
-            camLocked = true;
-            sound.ForcePlay(Sounds::LOCK_ACQUIRED);
-        } else {
-            if (yz_angle > 0.0f) {
-                camera.orientation.x += std::min(yz_angle, std::max(0.001, yz_angle * CAMLOCK_SPEED * deltaTime));
-            } else {
-                camera.orientation.x += std::max(yz_angle, std::min(-0.001, yz_angle * CAMLOCK_SPEED * deltaTime));
+            if (xza_start == 0.0 && yza_start == 0.0) {
+                xza_start = std::abs(xz_angle);
+                yza_start = std::abs(yz_angle);
             }
-            if (xz_angle > 0.0f) {
-                camera.orientation.y += std::min(xz_angle, std::max(0.001, xz_angle * CAMLOCK_SPEED * deltaTime));
+
+            lockProgress = std::min(2.0f, float((xza_abs / xza_start) + (yza_abs / yza_start)));
+
+            if (xza_abs < 0.0015 && yza_abs < 0.0015) {
+                camera.orientation.x += yz_angle;
+                camera.orientation.y += xz_angle;
+                xza_start = 0.0;
+                yza_start = 0.0;
+                camLock = false;
+                camLocked = true;
+                sound.ForcePlay(Sounds::LOCK_ACQUIRED);
             } else {
-                camera.orientation.y += std::max(xz_angle, std::min(-0.001, xz_angle * CAMLOCK_SPEED * deltaTime));
+                if (yz_angle > 0.0f) {
+                    camera.orientation.x += std::min(yz_angle, std::max(0.001, yz_angle * CAMLOCK_SPEED * deltaTime));
+                } else {
+                    camera.orientation.x += std::max(yz_angle, std::min(-0.001, yz_angle * CAMLOCK_SPEED * deltaTime));
+                }
+                if (xz_angle > 0.0f) {
+                    camera.orientation.y += std::min(xz_angle, std::max(0.001, xz_angle * CAMLOCK_SPEED * deltaTime));
+                } else {
+                    camera.orientation.y += std::max(xz_angle, std::min(-0.001, xz_angle * CAMLOCK_SPEED * deltaTime));
+                }
+            }
+        } else if (apilotLocked) {
+            movementSpeed = apilotDist * 0.001;
+            moveDist = movementSpeed * deltaTime;
+            camera.position += camera.forward * moveDist;
+            apilotDist -= moveDist;
+            if (apilotDist < apilotTarg) {
+                apilotLocked = false;
+                sound.ForcePlay(Sounds::AUTOPILOT_DISENGAGED);
             }
         }
     }
@@ -389,6 +464,7 @@ void Game::BeginActions()
 	rInfo.cam_info = camera.GetInfo();
 	rInfo.rand_int = rand();
 	rInfo.delta_time = deltaTime;
+	rInfo.game_time = gameTime;
 
 	zonePos = camera.position / ZONE_HALF;
 	globShift = {0,0,0};
@@ -443,10 +519,7 @@ void Game::RenderFarStars()
 		rInfo.cam_info.cam_pos = camera.position.vector;
 		rInfo.zone_offset = globXYZ;
 
-		openCL.GS_Kernel.setArg(0, cl_starBuff);
-		openCL.GS_Kernel.setArg(1, rInfo);
-
-		openCL.GenStars();
+		openCL.GenStars(cl_starBuff, rInfo);
 		openCL.queue.finish();
 
 		if (starPicked) {
@@ -465,21 +538,19 @@ void Game::RenderFarStars()
 		}
 	}
 
+    //openCL.WriteToBuffer(cl_renderInfoBuff, &rInfo, sizeof(cl_RenderInfo));
+
     std::fill(idatSizes.begin(), idatSizes.end(), 0);
 
-    openCL.queue.enqueueWriteBuffer(cl_idatSizesBuff, CL_TRUE, 0, sizeof(cl_uint)*10, idatSizes.data());
-	openCL.queue.finish();
+    openCL.WriteToBuffer(cl_idatSizesBuff, idatSizes.data(), sizeof(cl_uint)*10);
 
-	openCL.DG_Kernel.setArg(0, gfx.ClGlMemory(0));
-	openCL.DG_Kernel.setArg(1, cl_starBuff);
-	openCL.DG_Kernel.setArg(2, gfx.ClGlMemory(2));
-	openCL.DG_Kernel.setArg(3, cl_idatSizesBuff);
-	openCL.DG_Kernel.setArg(4, cl_indexBuff);
-	openCL.DG_Kernel.setArg(5, rInfo);
-
-	openCL.DrawStars();
-	openCL.queue.finish();
-
+    try {
+        openCL.DrawStars(gfx.ClGlMemory(0), gfx.ClGlMemory(2), cl_starBuff, cl_idatSizesBuff, cl_indexBuff, rInfo);
+        openCL.queue.finish();
+    } catch (cl::Error& e) {
+        PrintLine("[CL::DrawStars() Error] ("+VarToStr(e.err())+"): "+e.what());
+        exit(EXIT_FAILURE);
+    }
 	openCL.queue.enqueueReadBuffer(cl_idatSizesBuff, CL_TRUE, 0, sizeof(cl_uint)*10, idatSizes.data());
 	openCL.queue.finish();
 
@@ -512,8 +583,7 @@ void Game::RenderFarStars()
             openCL.queue.enqueueReadBuffer(cl_starBuff, CL_TRUE, sizeof(cl_Star)*nearestIndex, sizeof(cl_Star), &loadedStar);
         }
 
-        openCL.queue.enqueueWriteBuffer(glIdatBuff, CL_TRUE, 0, sizeof(cl_InstanceData)*instList.size(), instList.data());
-        openCL.queue.finish();
+        openCL.WriteToBuffer(glIdatBuff, instList.data(), sizeof(cl_InstanceData)*instList.size());
 
     } else if (instList.size() == 1) {
 
@@ -534,20 +604,67 @@ void Game::RenderFarStars()
     }
 }
 
+void Game::DrawPlanetTex(uint32_t p) {
+    TerrainGen texGen(PLANET_TEX_W, PLANET_TEX_H);
+    planets[p].water_frac = texGen.DrawPlanetColors(planetMaps[p], planetTexs[p], planets[p]);
+
+    std::array<size_t,3> origin = { 0, 0, 0 };
+    std::array<size_t,3> region = { PLANET_TEX_W, PLANET_TEX_H, 1 };
+
+    openCL.queue.enqueueWriteImage(cl_planetTexs[p], CL_FALSE, origin, region,
+                                   sizeof(RGB32)*PLANET_TEX_W, 0, planetTexs[p]);
+}
+
+void Game::DrawMoonTex(uint32_t p, uint32_t m) {
+    TerrainGen texGen(MOON_TEX_W, MOON_TEX_H);
+    moons[m].water_frac = texGen.DrawMoonColors(moonMaps[m], moonTexs[m], moons[m]);
+
+    std::array<size_t,3> origin = { 0, 0, 0 };
+    std::array<size_t,3> region = { MOON_TEX_W, MOON_TEX_H, 1 };
+
+    openCL.queue.enqueueWriteImage(cl_moonTexs[m], CL_FALSE, origin, region,
+                                   sizeof(RGB32)*MOON_TEX_W, 0, moonTexs[m]);
+}
+
+/*void CL_CALLBACK TerrainMapCopyCB(cl_event event, cl_int, void* pUserData) {
+    Game& game(*((Game*)GLOBALS::GAME_PTR));
+    game.DrawTerrainTex(*((uint32_t*)pUserData));
+}*/
+
 void Game::GenerateSolSystem()
 {
-    // Lambda function for planet texture generation
-    static auto genPlanetTex = [this](cl_Planet& planet, uint32_t i, uint32_t width, uint32_t height, std::pair<uint64_t,uint64_t> seeds) {
-        MapGen mapGen;//(TEX_GEN_DELAY, TEX_COL_DELAY);
-        std::pair<double,double> mapSeeds((1.0+DblFromLong(seeds.first*(i+1)))*0.5, seeds.second*(i+1));
-        mapGen.GenHeightMap(heightMaps[i], width, height, WATER_ALT_MAX-(planet.water_frac*WATER_ALT_DIF), mapSeeds);
-        planet.water_frac = mapGen.DrawColors(planetTexs[i], planet);
-        genJobCount--;
-    };
-
-    if (genThreadJobs > 0 && genJobCount < MAX_THREADS) {
-        uint32_t p = --genThreadJobs;
-        threads.emplace_back(genPlanetTex, std::ref(planets[p]), p, PLANET_TEX_W, PLANET_TEX_H, sysSeeds);
+    if (genThreadJobs > 0 && genJobCount < 1) {
+        uint32_t i = --genThreadJobs;
+        static auto genTerrainMaps = [this](uint32_t p)
+        {
+            openCL.GenHeightMap(true, sysSeeds.first+p, planets[p].water_frac, PLANET_TEX_W, PLANET_TEX_H, cl_pmapBuffs[p]);
+            openCL.queue.finish();
+            std::this_thread::sleep_for(std::chrono::milliseconds(TEX_GEN_DELAY));
+            openCL.GenNormalMap(PLANET_TEX_W, PLANET_TEX_H, cl_pmapBuffs[p], cl_planetNormBuff);
+            openCL.queue.finish();
+            std::this_thread::sleep_for(std::chrono::milliseconds(TEX_GEN_DELAY));
+            openCL.queue.enqueueCopyBuffer(cl_planetNormBuff, cl_pmapBuffs[p], 0, 0, sizeof(float4)*PLANET_TEX_W*PLANET_TEX_H);
+            openCL.queue.enqueueReadBuffer(cl_planetNormBuff, CL_TRUE, 0, sizeof(float4)*PLANET_TEX_W*PLANET_TEX_H, planetMaps[p]);
+            //pfinEvents[i].setCallback(CL_COMPLETE, &TerrainMapCopyCB, (void*)&planetIndexList[i]);
+            openCL.queue.finish();
+            DrawPlanetTex(p);
+            for (uint32_t m=0; m<planets[p].moons; ++m) {
+                uint32_t moonIndex = p * MAX_MOONS + m;
+                std::this_thread::sleep_for(std::chrono::milliseconds(TEX_GEN_DELAY));
+                openCL.GenHeightMap(false, sysSeeds.second+moonIndex, moons[moonIndex].water_frac, MOON_TEX_W, MOON_TEX_H, cl_mmapBuffs[moonIndex]);
+                openCL.queue.finish();
+                std::this_thread::sleep_for(std::chrono::milliseconds(TEX_GEN_DELAY));
+                openCL.GenNormalMap(MOON_TEX_W, MOON_TEX_H, cl_mmapBuffs[moonIndex], cl_moonNormBuff);
+                openCL.queue.finish();
+                std::this_thread::sleep_for(std::chrono::milliseconds(TEX_GEN_DELAY));
+                openCL.queue.enqueueCopyBuffer(cl_moonNormBuff, cl_mmapBuffs[moonIndex], 0, 0, sizeof(float4)*MOON_TEX_W*MOON_TEX_H);
+                openCL.queue.enqueueReadBuffer(cl_moonNormBuff, CL_TRUE, 0, sizeof(float4)*MOON_TEX_W*MOON_TEX_H, moonMaps[moonIndex]);
+                openCL.queue.finish();
+                DrawMoonTex(p, moonIndex);
+            }
+            genJobCount--;
+        };
+        threads.emplace_back(genTerrainMaps, i);
         genJobCount++;
     }
 
@@ -560,7 +677,7 @@ void Game::GenerateSolSystem()
 
             loadedStarPos = DVec3(loadedStar.position);
             loadedStarClr = {loadedStar.color.red/255.f, loadedStar.color.green/255.f, loadedStar.color.blue/255.f};
-            ctFrac = 0.5f - std::min((loadedStar.temp / (float)STAR_MAX_TEMP) * 0.5f, 0.5f);
+            ctFrac = 0.5f + std::min((loadedStar.temp / (float)STAR_MAX_TEMP) * 0.5f, 0.5f);
             lsLumiFrac = std::max(0.5f, 3.0f - std::min(3.0f, loadedStar.luminosity / (float)SOLAR_LUMI));
 
             loadedGlobPos = Index1Dto3D(loadedIndex, SECTOR_SPAN);
@@ -584,16 +701,9 @@ void Game::GenerateSolSystem()
                 solSystem.moons = 0;
 
                 if (solSystem.planets > 0) {
-                    openCL.queue.enqueueWriteBuffer(cl_systemBuff, CL_TRUE, 0, sizeof(cl_SolarSystem), &solSystem);
-                    openCL.queue.finish();
+                    openCL.WriteToBuffer(cl_systemBuff, &solSystem, sizeof(cl_SolarSystem));
 
-                    openCL.GP_Kernel.setArg(0, cl_systemBuff);
-                    openCL.GP_Kernel.setArg(1, cl_planetBuff);
-                    openCL.GP_Kernel.setArg(2, cl_moonBuff);
-                    openCL.GP_Kernel.setArg(3, cl_starBuff);
-                    openCL.GP_Kernel.setArg(4, cl_indexBuff);
-
-                    openCL.GenPlanets(solSystem.planets);
+                    openCL.GenPlanets(solSystem.planets, cl_systemBuff, cl_planetBuff, cl_moonBuff, cl_starBuff, cl_indexBuff);
                     openCL.queue.finish();
 
                     openCL.queue.enqueueReadBuffer(cl_systemBuff, CL_TRUE, 0, sizeof(cl_SolarSystem), &solSystem);
@@ -605,15 +715,19 @@ void Game::GenerateSolSystem()
                     openCL.queue.enqueueReadBuffer(cl_planetBuff, CL_TRUE, 0, sizeof(cl_Planet)*solSystem.planets, planets.data());
                     openCL.queue.finish();
 
+                    //openCL.queue.enqueueReadBuffer(cl_moonBuff, CL_TRUE, 0, sizeof(cl_Moon)*MAX_PLANETS*MAX_MOONS, moons.data());
+                    //openCL.queue.finish();
+
                     for (uint32_t p=0; p<solSystem.planets; ++p)
                     {
-                        moons[p].resize(planets[p].moons);
-
-                        if (planets[p].moons > 0)
-                            openCL.queue.enqueueReadBuffer(cl_moonBuff, CL_FALSE, sizeof(cl_Moon)*MAX_MOONS*p,
-                                                           sizeof(cl_Moon)*planets[p].moons, moons[p].data());
+                        uint32_t startIndex = p * MAX_MOONS;
+                        cl_Planet& planet(planets[p]);
+                        if (planet.moons > 0)
+                            openCL.queue.enqueueReadBuffer(cl_moonBuff, CL_FALSE, sizeof(cl_Moon)*startIndex,
+                                                           sizeof(cl_Moon)*planet.moons, &moons[startIndex]);
                     }
 
+                    openCL.queue.finish();
                     genThreadJobs = solSystem.planets;
 
                 } else {
@@ -650,28 +764,18 @@ void Game::GenerateSolSystem()
             isStarLoaded = false;
             genThreadJobs = -genThreadJobs;
             sound.ForcePlay(Sounds::EXITING_SYSTEM);
+            ClearFragBuff();
         }
     }
 
-    if (threads.size() > 0 && genJobCount == 0) {
-        // check if player left system before all textures generated
-        if (genThreadJobs == 0) {
+    if (threads.size() > 0 && genJobCount == 0 && genThreadJobs == 0) {
 
-            cl::size_t<3> origin; cl::size_t<3> region;
-            origin[0] = 0; origin[1] = 0; origin[2] = 0;
-            region[0] = PLANET_TEX_W; region[1] = PLANET_TEX_H; region[2] = 1;
-
-            for (int32_t p=solSystem.planets-1; p >= 0; --p)
-                openCL.queue.enqueueWriteImage(cl_textures[p], CL_FALSE, origin, region,
-                                               sizeof(RGB32)*PLANET_TEX_W, 0, planetTexs[p]);
-            openCL.queue.finish();
-        }
+        std::cout << "done generating planet textures" << std::endl;
 
         for (std::thread& thread : threads) thread.join();
 
         threads.clear();
         threads.reserve(solSystem.planets);
-        std::cout << "done generating planets" << std::endl;
     }
 }
 
@@ -699,7 +803,7 @@ void Game::RenderSolSystem()
         if (lsPosRelCam.z > 0.0) {
             lsScreenPos.x = rInfo.half_X + (lsPosRelCam.x / lsPosRelCam.z) * rInfo.cam_info.cam_foc;
             lsScreenPos.y = rInfo.half_Y + (lsPosRelCam.y / lsPosRelCam.z) * rInfo.cam_info.cam_foc;
-            lsScreenPos.x = ((lsScreenPos.x / gfx.windowWidth) - 0.5f) * resolution.AspectRatio;
+            lsScreenPos.x = ((lsScreenPos.x / gfx.windowWidth) - 0.5f) * gfx.profile.AspectRatio;
             lsScreenPos.y = (lsScreenPos.y / gfx.windowHeight) - 0.5f;
             cdFrac = 0.5f + (0.5f * std::pow(lsDistFrac, 2.0f));
             doLensFlare = true;
@@ -722,32 +826,21 @@ void Game::RenderSolSystem()
                 mStart = spIndex * MAX_MOONS;
                 skipList[pIndex] = pIndex;
 
-                if (gfx.CalcBounds(camera.foclen, planet.radius*PLANET_MAG, posRelCam, screenBounds)) {
-                    openCL.DP_Kernel.setArg(0, cl_planetBuff);
-                    openCL.DP_Kernel.setArg(1, cl_starBuff);
-                    openCL.DP_Kernel.setArg(2, cl_fragBuff);
-                    openCL.DP_Kernel.setArg(3, spIndex);
-                    openCL.DP_Kernel.setArg(4, loadedIndex);
-                    openCL.DP_Kernel.setArg(5, rInfo);
-                    openCL.DP_Kernel.setArg(6, cl_textures[spIndex]);
-                    openCL.DrawPlanet(screenBounds.x, screenBounds.y, screenBounds.z, screenBounds.w);
+                if (gfx.CalcBounds(camera.foclen, planet.atmos_radi*PLANET_MAG, posRelCam, screenBounds)) {
+                    openCL.DrawPlanet(screenBounds, cl_planetBuff, cl_moonBuff, cl_starBuff, cl_fragBuff,
+                                      cl_pmapBuffs, cl_planetTexs, spIndex, loadedIndex, rInfo);
                     openCL.queue.finish();
                 }
 
                 for (uint32_t m=0; m < planet.moons; ++m)
                 {
                     mIndex = mStart + m;
-                    const cl_Moon& moon(moons[spIndex][m]);
+                    const cl_Moon& moon(moons[mIndex]);
                     posRelCam = camera.PointRelCam(moon.position);
 
-                    if (gfx.CalcBounds(camera.foclen, moon.radius*PLANET_MAG, posRelCam, screenBounds)) {
-                        openCL.DM_Kernel.setArg(0, cl_moonBuff);
-                        openCL.DM_Kernel.setArg(1, cl_starBuff);
-                        openCL.DM_Kernel.setArg(2, cl_fragBuff);
-                        openCL.DM_Kernel.setArg(3, mIndex);
-                        openCL.DM_Kernel.setArg(4, loadedIndex);
-                        openCL.DM_Kernel.setArg(5, rInfo);
-                        openCL.DrawMoon(screenBounds.x, screenBounds.y, screenBounds.z, screenBounds.w);
+                    if (gfx.CalcBounds(camera.foclen, moon.atmos_radi*PLANET_MAG, posRelCam, screenBounds)) {
+                        openCL.DrawMoon(screenBounds, cl_moonBuff, cl_starBuff, cl_fragBuff,
+                                        cl_mmapBuffs, cl_moonTexs, mIndex, loadedIndex, planet, rInfo);
                         openCL.queue.finish();
                     }
                 }
@@ -761,12 +854,7 @@ void Game::RenderSolSystem()
             //TODO:create game timer (stops when game paused)
             static cl_double gTime;
             gTime = glfwGetTime() * 0.00001;
-            openCL.DS_Kernel.setArg(0, cl_starBuff);
-            openCL.DS_Kernel.setArg(1, cl_fragBuff);
-            openCL.DS_Kernel.setArg(2, loadedIndex);
-            openCL.DS_Kernel.setArg(3, gTime);
-            openCL.DS_Kernel.setArg(4, rInfo);
-            openCL.DrawStar(screenBounds.x, screenBounds.y, screenBounds.z, screenBounds.w);
+            openCL.DrawStar(screenBounds, cl_starBuff, cl_fragBuff, loadedIndex, gTime, rInfo);
             openCL.queue.finish();
         }*/
 
@@ -781,7 +869,7 @@ void Game::RenderSolSystem()
             mDistList.resize(planet.moons);
             for (uint32_t m=0; m < planet.moons; ++m)
             {
-                mDistList[m] = std::make_pair(camera.position.VectDist(moons[spIndex][m].position), m);
+                mDistList[m] = std::make_pair(camera.position.VectDist(moons[mStart+m].position), m);
             }
 
             std::sort(mDistList.begin(), mDistList.end(),
@@ -793,17 +881,12 @@ void Game::RenderSolSystem()
 
                     smIndex = mDistList[m].second;
                     mIndex = mStart + smIndex;
-                    const cl_Moon& moon(moons[spIndex][smIndex]);
+                    const cl_Moon& moon(moons[mIndex]);
                     posRelCam = camera.PointRelCam(moon.position);
 
-                    if (gfx.CalcBounds(camera.foclen, moon.radius*PLANET_MAG, posRelCam, screenBounds)) {
-                        openCL.DM_Kernel.setArg(0, cl_moonBuff);
-                        openCL.DM_Kernel.setArg(1, cl_starBuff);
-                        openCL.DM_Kernel.setArg(2, cl_fragBuff);
-                        openCL.DM_Kernel.setArg(3, mIndex);
-                        openCL.DM_Kernel.setArg(4, loadedIndex);
-                        openCL.DM_Kernel.setArg(5, rInfo);
-                        openCL.DrawMoon(screenBounds.x, screenBounds.y, screenBounds.z, screenBounds.w);
+                    if (gfx.CalcBounds(camera.foclen, moon.atmos_radi*PLANET_MAG, posRelCam, screenBounds)) {
+                        openCL.DrawMoon(screenBounds, cl_moonBuff, cl_starBuff, cl_fragBuff,
+                                        cl_mmapBuffs, cl_moonTexs, mIndex, loadedIndex, planet, rInfo);
                         openCL.queue.finish();
                     }
 
@@ -815,15 +898,9 @@ void Game::RenderSolSystem()
 
             posRelCam = camera.PointRelCam(planet.position);
 
-            if (gfx.CalcBounds(camera.foclen, planet.radius*PLANET_MAG, posRelCam, screenBounds)) {
-                openCL.DP_Kernel.setArg(0, cl_planetBuff);
-                openCL.DP_Kernel.setArg(1, cl_starBuff);
-                openCL.DP_Kernel.setArg(2, cl_fragBuff);
-                openCL.DP_Kernel.setArg(3, spIndex);
-                openCL.DP_Kernel.setArg(4, loadedIndex);
-                openCL.DP_Kernel.setArg(5, rInfo);
-                openCL.DP_Kernel.setArg(6, cl_textures[spIndex]);
-                openCL.DrawPlanet(screenBounds.x, screenBounds.y, screenBounds.z, screenBounds.w);
+            if (gfx.CalcBounds(camera.foclen, planet.atmos_radi*PLANET_MAG, posRelCam, screenBounds)) {
+                openCL.DrawPlanet(screenBounds, cl_planetBuff, cl_moonBuff, cl_starBuff, cl_fragBuff,
+                                  cl_pmapBuffs, cl_planetTexs, spIndex, loadedIndex, rInfo);
                 openCL.queue.finish();
             }
 
@@ -831,17 +908,12 @@ void Game::RenderSolSystem()
             {
                 smIndex = mDistList[m].second;
                 mIndex = mStart + smIndex;
-                const cl_Moon& moon(moons[spIndex][smIndex]);
+                const cl_Moon& moon(moons[mIndex]);
                 posRelCam = camera.PointRelCam(moon.position);
 
-                if (gfx.CalcBounds(camera.foclen, moon.radius*PLANET_MAG, posRelCam, screenBounds)) {
-                    openCL.DM_Kernel.setArg(0, cl_moonBuff);
-                    openCL.DM_Kernel.setArg(1, cl_starBuff);
-                    openCL.DM_Kernel.setArg(2, cl_fragBuff);
-                    openCL.DM_Kernel.setArg(3, mIndex);
-                    openCL.DM_Kernel.setArg(4, loadedIndex);
-                    openCL.DM_Kernel.setArg(5, rInfo);
-                    openCL.DrawMoon(screenBounds.x, screenBounds.y, screenBounds.z, screenBounds.w);
+                if (gfx.CalcBounds(camera.foclen, moon.atmos_radi*PLANET_MAG, posRelCam, screenBounds)) {
+                    openCL.DrawMoon(screenBounds, cl_moonBuff, cl_starBuff, cl_fragBuff,
+                                    cl_mmapBuffs, cl_moonTexs, mIndex, loadedIndex, planet, rInfo);
                     openCL.queue.finish();
                 }
             }
@@ -850,11 +922,11 @@ void Game::RenderSolSystem()
     } else if (doLensFlare) {
         cl_InstanceData& instDat(instList.back());
         lsScreenPos = { instDat.offset.s[0], instDat.offset.s[1] };
-        lsScreenPos.x = ((lsScreenPos.x / gfx.windowWidth) - 0.5f) * resolution.AspectRatio;
+        lsScreenPos.x = ((lsScreenPos.x / gfx.windowWidth) - 0.5f) * gfx.profile.AspectRatio;
         lsScreenPos.y = (lsScreenPos.y / gfx.windowHeight) - 0.5f;
         loadedStarClr = { instDat.color.s[0], instDat.color.s[1], instDat.color.s[2] };
         cdFrac = 0.5f + (0.5f * std::pow(instDat.depth, 2.0f));
-        ctFrac = 0.5f - std::min((loadedStar.temp / (float)STAR_MAX_TEMP) * 0.5f, 0.5f);
+        ctFrac = 0.5f + std::min((loadedStar.temp / (float)STAR_MAX_TEMP) * 0.5f, 0.5f);
         lsLumiFrac = std::max(0.5f, 3.0f - std::min(3.0f, loadedStar.luminosity / (float)SOLAR_LUMI));
         lsDistFrac = instDat.depth;
         doLensFlare = true;
@@ -1006,11 +1078,11 @@ void Game::Render2DGUI()
             pickedVolumeTxt.setText(&fontStyles[FONT_XOLONIUM].description, strTitles[4]+":");
             pickedVolumeTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, strStats[4]);
 
-            pickedAreaTxt.setText(&fontStyles[FONT_XOLONIUM].description, strTitles[5]+":");
-            pickedAreaTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, strStats[5]);
+            pickedDensityTxt.setText(&fontStyles[FONT_XOLONIUM].description, strTitles[5]+":");
+            pickedDensityTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, strStats[5]);
 
-            pickedDensityTxt.setText(&fontStyles[FONT_XOLONIUM].description, strTitles[6]+":");
-            pickedDensityTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, strStats[6]);
+            pickedAreaTxt.setText(&fontStyles[FONT_XOLONIUM].description, strTitles[6]+":");
+            pickedAreaTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, strStats[6]);
 
             pickedTempTxt.setText(&fontStyles[FONT_XOLONIUM].description, strTitles[7]+":");
             pickedTempTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, strStats[7]);
@@ -1029,18 +1101,12 @@ void Game::Render2DGUI()
         uint32_t tmpUint = UINT_MAX;
         cl_float2 tempVec = { mouse.GetMouseX(), rInfo.pixels_Y - mouse.GetMouseY() };
 
-        openCL.queue.enqueueWriteBuffer(cl_volatileBuff, CL_TRUE, 0, sizeof(cl_uint), &tmpUint);
-        openCL.queue.enqueueWriteBuffer(cl_indexBuff, CL_TRUE, 0, sizeof(cl_int), &pickedStarIndex);
-        openCL.queue.enqueueWriteBuffer(cl_mousePosBuff, CL_TRUE, 0, sizeof(cl_float2), &tempVec);
+        openCL.queue.enqueueWriteBuffer(cl_volatileBuff, CL_FALSE, 0, sizeof(cl_uint), &tmpUint);
+        openCL.queue.enqueueWriteBuffer(cl_indexBuff, CL_FALSE, 0, sizeof(cl_int), &pickedStarIndex);
+        //openCL.queue.enqueueWriteBuffer(cl_mousePosBuff, CL_FALSE, 0, sizeof(cl_float2), &tempVec);
         openCL.queue.finish();
 
-        openCL.PS_Kernel.setArg(0, cl_starBuff);
-        openCL.PS_Kernel.setArg(1, cl_volatileBuff);
-        openCL.PS_Kernel.setArg(2, cl_indexBuff);
-        openCL.PS_Kernel.setArg(3, cl_mousePosBuff);
-        openCL.PS_Kernel.setArg(4, rInfo);
-
-        openCL.PickStar();
+        openCL.PickStar(cl_starBuff, cl_volatileBuff, cl_indexBuff, tempVec, rInfo);
         openCL.queue.finish();
 
         openCL.queue.enqueueReadBuffer(cl_indexBuff, CL_TRUE, 0, sizeof(cl_int), &pickedStarIndex);
@@ -1105,19 +1171,12 @@ void Game::Render2DGUI()
         uint32_t tmpUint = UINT_MAX;
         cl_float2 tempVec = { mouse.GetMouseX(), rInfo.pixels_Y - mouse.GetMouseY() };
 
-        openCL.queue.enqueueWriteBuffer(cl_volatileBuff, CL_TRUE, 0, sizeof(cl_uint), &tmpUint);
-        openCL.queue.enqueueWriteBuffer(cl_indexBuff, CL_TRUE, 0, sizeof(int2), &pickedIndexPM);
-        openCL.queue.enqueueWriteBuffer(cl_mousePosBuff, CL_TRUE, 0, sizeof(cl_float2), &tempVec);
+        openCL.queue.enqueueWriteBuffer(cl_volatileBuff, CL_FALSE, 0, sizeof(cl_uint), &tmpUint);
+        openCL.queue.enqueueWriteBuffer(cl_indexBuff, CL_FALSE, 0, sizeof(int2), &pickedIndexPM);
+        //openCL.queue.enqueueWriteBuffer(cl_mousePosBuff, CL_FALSE, 0, sizeof(cl_float2), &tempVec);
         openCL.queue.finish();
 
-        openCL.PP_Kernel.setArg(0, cl_planetBuff);
-        openCL.PP_Kernel.setArg(1, cl_moonBuff);
-        openCL.PP_Kernel.setArg(2, cl_volatileBuff);
-        openCL.PP_Kernel.setArg(3, cl_indexBuff);
-        openCL.PP_Kernel.setArg(4, cl_mousePosBuff);
-        openCL.PP_Kernel.setArg(5, rInfo);
-
-        openCL.PickPlanet(solSystem.planets);
+        openCL.PickPlanet(solSystem.planets, cl_planetBuff, cl_moonBuff, cl_volatileBuff, cl_indexBuff, tempVec, rInfo);
         openCL.queue.finish();
 
         openCL.queue.enqueueReadBuffer(cl_indexBuff, CL_TRUE, 0, sizeof(int2), &pickedIndexPM);
@@ -1127,7 +1186,7 @@ void Game::Render2DGUI()
 
         if (isPickedPlanet || pickedIndexPM.y > -1) {
 
-            std::string titleStr, typeStr, massStr, velStr, radStr, volStr, areaStr, densStr, tempStr, ageStr;
+            std::string titleStr, typeStr, massStr, velStr, radStr, gravStr, areaStr, densStr, tempStr, ageStr;
 
             if (!planetPicked) {
                 planetPicked = true;
@@ -1144,7 +1203,7 @@ void Game::Render2DGUI()
                 massStr = FormatFltStr(VarToStr(pickedPlanet.mass))+" "+LANG(STR_KG);
                 velStr = FormatFltStr(VarToStr(std::abs(pickedPlanet.velocity)))+" "+LANG(STR_M)+"/"+LANG(STR_S);
                 radStr = FormatFltStr(VarToStr(pickedPlanet.radius))+" "+LANG(STR_M);
-                volStr = FormatFltStr(VarToStr(pickedPlanet.volume))+" "+LANG(STR_M)+"\u00B3";
+                gravStr = FormatFltStr(VarToStr(pickedPlanet.gravity))+" "+LANG(STR_M)+"/"+LANG(STR_S)+"\u00B2";
                 densStr = FormatFltStr(VarToStr(pickedPlanet.density))+" "+LANG(STR_KG)+"/"+LANG(STR_M)+"\u00B3";
                 areaStr = FormatFltStr(VarToStr(pickedPlanet.area))+" "+LANG(STR_M)+"\u00B2";
                 tempStr = FormatFltStr(VarToStr(pickedPlanet.temp))+" "+LANG(STR_K);
@@ -1160,7 +1219,7 @@ void Game::Render2DGUI()
                 massStr = FormatFltStr(VarToStr(pickedMoon.mass))+" "+LANG(STR_KG);
                 velStr = FormatFltStr(VarToStr(std::abs(pickedMoon.velocity)))+" "+LANG(STR_M)+"/"+LANG(STR_S);
                 radStr = FormatFltStr(VarToStr(pickedMoon.radius))+" "+LANG(STR_M);
-                volStr = FormatFltStr(VarToStr(pickedMoon.volume))+" "+LANG(STR_M)+"\u00B3";
+                gravStr = FormatFltStr(VarToStr(pickedMoon.gravity))+" "+LANG(STR_M)+"/"+LANG(STR_S)+"\u00B2";
                 densStr = FormatFltStr(VarToStr(pickedMoon.density))+" "+LANG(STR_KG)+"/"+LANG(STR_M)+"\u00B3";
                 areaStr = FormatFltStr(VarToStr(pickedMoon.area))+" "+LANG(STR_M)+"\u00B2";
                 tempStr = FormatFltStr(VarToStr(pickedMoon.temp))+" "+LANG(STR_K);
@@ -1184,8 +1243,8 @@ void Game::Render2DGUI()
             pickedRadiusTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_RADIUS)+":");
             pickedRadiusTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, radStr);
 
-            pickedVolumeTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_VOLUME)+":");
-            pickedVolumeTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, volStr);
+            pickedVolumeTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_GRAVITY)+":");
+            pickedVolumeTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, gravStr);
 
             pickedDensityTxt.setText(&fontStyles[FONT_XOLONIUM].description, LANG(STR_DENSITY)+":");
             pickedDensityTxtVal.setText(&fontStyles[FONT_XOLONIUM].description, densStr);
@@ -1312,15 +1371,15 @@ void Game::Render2DGUI()
         gfx.DrawText(pickedVolumeTxt);
         gfx.DrawText(pickedVolumeTxtVal);
 
-        pickedAreaTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-220.f, 0.1f);
-        pickedAreaTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-220.f, 0.1f);
-        gfx.DrawText(pickedAreaTxt);
-        gfx.DrawText(pickedAreaTxtVal);
-
-        pickedDensityTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-250.f, 0.1f);
-        pickedDensityTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-250.f, 0.1f);
+        pickedDensityTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-220.f, 0.1f);
+        pickedDensityTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-220.f, 0.1f);
         gfx.DrawText(pickedDensityTxt);
         gfx.DrawText(pickedDensityTxtVal);
+
+        pickedAreaTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-250.f, 0.1f);
+        pickedAreaTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-250.f, 0.1f);
+        gfx.DrawText(pickedAreaTxt);
+        gfx.DrawText(pickedAreaTxtVal);
 
         pickedTempTxt.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-285.f, gfx.windowHeight-280.f, 0.1f);
         pickedTempTxtVal.setScaleAndPos(gfx.fontSizeSmall, gfx.windowWidth+slidePix-170.f, gfx.windowHeight-280.f, 0.1f);
@@ -1359,7 +1418,7 @@ void Game::RenderSpaceGas()
                       10000.0-((globPos.y%10000)-((zonePos.y*0.5)+0.5)),
                       10000.0-((globPos.z%10000)-((zonePos.z*0.5)+0.5)));
     glm::vec3 gasColor(0.57f, 0.27f, 0.13f);
-    gfx.openGL.InitVolGasRender(gasColor, gfx.resolution, rayOrig, camera.Forward(), camera.Right(), camera.Up(), 0.5f);
+    gfx.openGL.InitVolGasRender(gasColor, gfx.resolution, rayOrig, camera.Forward(), camera.Right(), camera.Up(), SPACE_GAS_VIS);
     gfx.DrawVolGas();
 }
 
@@ -1367,8 +1426,10 @@ void Game::RenderStarFlare()
 {
     // do lense flare if close enough to star
     if (doLensFlare) {
-        gfx.openGL.InitFlareRender(loadedStarClr, lsScreenPos, lsLumiFrac, resolution.AspectRatio, glfwGetTime(), cdFrac, ctFrac, (FLARE_VIS_DEPTH-lsDistFrac)*FLARE_ADM);
-        gfx.DrawFrameGL();
+        gfx.openGL.InitFlareRender(loadedStarClr, lsScreenPos, lsDistFrac, lsLumiFrac, gfx.profile.AspectRatio, glfwGetTime(), ctFrac);
+        gfx.DrawStarFlare();
+        gfx.DrawDimFlare();
+        gfx.DrawBlurFlare();
     }
 }
 
@@ -1391,79 +1452,67 @@ void Game::OverlayFarStars()
 void Game::FinishFrameCL()
 {
 	// compute final pixel colors from frags
-	openCL.FF_Kernel.setArg(0, cl_fragBuff);
-	openCL.FF_Kernel.setArg(1, gfx.ClGlMemory(0));
-	openCL.FF_Kernel.setArg(2, rInfo);
-	openCL.FragsToFrame(gfx.windowWidth, gfx.windowHeight);
+	openCL.FragsToFrame(gfx.windowWidth, gfx.windowHeight, cl_fragBuff, gfx.ClGlMemory(0), rInfo);
 	openCL.queue.finish();
 }
 
 void Game::FinishFrameRT()
 {
     if (isStarLoaded) {
-        openCL.FF_Kernel.setArg(0, cl_fragBuff);
-        openCL.FF_Kernel.setArg(1, gfx.ClGlMemory(1));
-        openCL.FF_Kernel.setArg(2, rInfo);
-        openCL.FragsToFrame(gfx.windowWidth, gfx.windowHeight);
+        openCL.FragsToFrame(gfx.windowWidth, gfx.windowHeight, cl_fragBuff, gfx.ClGlMemory(1), rInfo);
         openCL.queue.finish();
     }
 }
 
 void Game::ClearFragBuff()
 {
-	openCL.FB_Kernel.setArg(0, cl_fragBuff);
-	openCL.FB_Kernel.setArg(1, rInfo);
-	openCL.FillFragBuff(gfx.windowWidth, gfx.windowHeight);
+	openCL.FillFragBuff(gfx.windowWidth, gfx.windowHeight, cl_fragBuff, rInfo);
 	openCL.queue.finish();
 }
 
 void Game::UpdatePhysics()
 {
     if (isStarLoaded) {
-        uint32_t planet_index = 0;
-        double tc_secs = gameTimer.SecsCount();
+        uint32_t planetIndex = 0;
+        uint32_t mstartIndex = 0;
+        double orbitFrac;
         /*openCL.UO_Kernel.setArg(0, cl_planetBuff);
         openCL.UO_Kernel.setArg(1, cl_moonBuff);
         openCL.UO_Kernel.setArg(2, loadedStar.position);
-        openCL.UO_Kernel.setArg(3, tc_secs);
+        openCL.UO_Kernel.setArg(3, gameTime);
         openCL.UpdateOrbits(solSystem.planets);*/
 
         for (cl_Planet& planet : planets)
-        {
-            double orbitFrac = tc_secs / planet.orbit_time;
+        {//TODO: apply eccentricity to orbits
+            orbitFrac = gameTime / planet.orbit_time;
             planet.position = DVec3::OrbitRot(planet.orbit_rad, orbitFrac*PI_MUL_2).OrbitTilt(solSystem.plane).
                               OrbitTilt(planet.orbit).VectAdd(loadedStarPos).vector;
 
-            for (cl_Moon& moon : moons[planet_index])
-            {
-                orbitFrac = tc_secs / moon.orbit_time;
-                moon.position = DVec3::OrbitRot(moon.orbit_rad*PLANET_MAG*0.1, orbitFrac*PI_MUL_2).
+            mstartIndex = MAX_MOONS * planetIndex;
+
+            for (uint32_t m=0; m<planet.moons; ++m) {
+                cl_Moon& moon(moons[mstartIndex + m]);
+                orbitFrac = gameTime / moon.orbit_time;
+                moon.position = DVec3::OrbitRot(moon.orbit_rad*PLANET_MAG, orbitFrac*PI_MUL_2).
                                 OrbitTilt(moon.orbit).VectAdd(planet.position).vector;
             }
 
             if (planet.moons > 0)
-                openCL.queue.enqueueWriteBuffer(cl_moonBuff, CL_FALSE, sizeof(cl_Moon)*MAX_MOONS*planet_index, sizeof(cl_Moon)*planet.moons, moons[planet_index].data());
+                openCL.queue.enqueueWriteBuffer(cl_moonBuff, CL_FALSE, sizeof(cl_Moon)*mstartIndex,
+                                                sizeof(cl_Moon)*planet.moons, &moons[mstartIndex]);
 
-            planet_index++;
+            planetIndex++;
         }
 
-        openCL.queue.enqueueWriteBuffer(cl_planetBuff, CL_TRUE, 0, sizeof(cl_Planet)*planets.size(), planets.data());
-        openCL.queue.finish();
+        openCL.WriteToBuffer(cl_planetBuff, planets.data(), sizeof(cl_Planet)*planets.size());
     }
 }
 
 void Game::ComposeFrame()
 {
-    //TODO: fix moon pop in/out (orbits inside planet)
-    //TODO: fix z-axis rotation for skybox
-    //TODO: add bloom to close stars
-    //TODO: procedural gas planet textures
-    //TODO: planet rings and craters
-    //TODO: moons cast shadows on planet
-    //TODO: gen planet bump maps
-    //TODO: render planet atmospheres
-    //TODO: render planet orbit paths (NanoVG?)
-    //TODO: enable planet rotation
+    //TODO: do planet ray tracing in shaders
+    //TODO: gas planets and planet rings
+    //TODO: scan for planets in system
     //TODO: scan elements on planets/moon
     //TODO: procedural asteroid fields
     //TODO: use quaternions for camera rotation

@@ -260,6 +260,12 @@ public:
 
         text_shader = loadShader(shader_text_frag, shader_text_vert);
 
+        mod_id = glGetUniformLocation( text_shader, "model" );
+        view_id = glGetUniformLocation( text_shader, "view" );
+        proj_id = glGetUniformLocation( text_shader, "projection" );
+        tex_id = glGetUniformLocation( text_shader, "tex" );
+        pix_id = glGetUniformLocation( text_shader, "pixel" );
+
         default_font = LoadFont("./Data/fonts/monofont.ttf", latin1_alphabet);
         default_markup = std::move(createMarkup("Monofont", default_font));
 
@@ -302,11 +308,9 @@ public:
     void renderText(const std::string& text, const float x_pos, const float y_pos) {
         assert(text_shader && "FreetypeGl needs to be initialised first");
         text_buffer_t* buffer = text_buffer_new( );
-        vec2 pen = {{x_pos,y_pos}};
+        vec2 pen = {x_pos,y_pos};
         text_buffer_printf(buffer, &pen, &default_markup.description, text.c_str(), NULL);
-        //updateTexture();
 
-        static const GLuint mod_id = glGetUniformLocation( text_shader, "model" );
         glUniformMatrix4fv( mod_id, 1, 0, identity.data );
 
         vertex_buffer_render( buffer->buffer, GL_TRIANGLES );
@@ -316,7 +320,6 @@ public:
     void renderText(const FreetypeGlText& text/*, bool call_pre_post=true*/) const {
         assert(text_shader && "FreetypeGl needs to be initialised first");
         //if(call_pre_post) preRender();
-        static const GLint mod_id = glGetUniformLocation( text_shader, "model" );
         glUniformMatrix4fv(mod_id, 1, 0, text.getModelMatrix().data);
 
         vertex_buffer_render( text.getTextBuffer()->buffer, GL_TRIANGLES );
@@ -339,14 +342,9 @@ public:
 
     void preRender() const {
         //glColor4f(1.00,1.00,1.00,1.00);
-        glBindVertexArray( 0 );
+        //glBindVertexArray( 0 );
         glUseProgram(text_shader);
         glBindTexture( GL_TEXTURE_2D, font_manager->atlas->id );
-
-        static const GLuint view_id = glGetUniformLocation( text_shader, "view" );
-        static const GLuint proj_id = glGetUniformLocation( text_shader, "projection" );
-        static const GLuint tex_id = glGetUniformLocation( text_shader, "tex" );
-        static const GLuint pix_id = glGetUniformLocation( text_shader, "pixel" );
 
         glUniformMatrix4fv( view_id, 1, 0, view.data );
         glUniformMatrix4fv( proj_id, 1, 0, projection.data );
@@ -366,7 +364,7 @@ public:
     void postRender() const {
         glBindTexture( GL_TEXTURE_2D, 0 );
         //glDisable( GL_BLEND );
-        glEnable(GL_DEPTH_TEST);
+        //glEnable(GL_DEPTH_TEST);
         glBlendColor( 0, 0, 0, 0 );
         glUseProgram( 0 );
     }
@@ -447,6 +445,12 @@ private:
     }
 
     const char* latin1_alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ ";
+
+    GLint mod_id;
+    GLuint view_id;
+    GLuint proj_id;
+    GLuint tex_id;
+    GLuint pix_id;
 
     GLuint text_shader = 0;
     font_manager_t* font_manager;

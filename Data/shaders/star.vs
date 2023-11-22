@@ -9,12 +9,14 @@ layout(location=5) in float depth;
 
 out vec4 Color;
 out vec2 Texcoord;
+out float Strength;
 
 uniform mat4 projection;
 
 void main()
 {
 	Color = color;
+	Strength = pow(1.0-depth, 13.0) * scale * 0.2;
 	Texcoord = texcoord;
 	vec4 result = projection * vec4((scale*position)+offset, 0.0, 1.0);
 	result.z = depth;

@@ -46,7 +46,7 @@ void PrintLine(std::stringstream& str_stream)
 
 void HandleFatalError(const int ecode, std::string emsg)
 {
-	std::cout << "FATAL ERROR (" << ecode << "): " << emsg << std::endl;
+	std::cerr << "FATAL ERROR (" << ecode << "): " << emsg << std::endl;
 	exit(EXIT_FAILURE);
 }
 
@@ -124,15 +124,4 @@ bool LoadLangFile(const std::string filename, std::vector<std::pair<std::string,
 	}
 
 	return false;
-}
-
-void CLBLog(const std::string logstr)
-{
-	if (CL_COMPLOG) {
-		std::ofstream clfile(GLOBALS::DATA_FOLDER+CL_BUILD_LOG);
-		if (clfile.is_open()) {
-			clfile << logstr.c_str() << "\n";
-			clfile.close();
-		}
-	}
 }

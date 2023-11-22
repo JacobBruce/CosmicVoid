@@ -5,6 +5,7 @@ std::vector<std::pair<std::string,std::string>> GLOBALS::lang_vec;
 std::array<int,99> GLOBALS::key_map;
 std::string GLOBALS::DATA_FOLDER;
 std::mutex GLOBALS::COUT_MUTEX;
+//void* GLOBALS::GAME_PTR;
 
 KeyboardServer GLFW::kServ;
 MouseServer GLFW::mServ;
@@ -132,6 +133,7 @@ int main(int argc, char *argv[])
 	//glfwSetWindowIcon(window, 2, images);
 
 	Game theGame(window, GLFW::kServ, GLFW::mServ);
+	//GLOBALS::GAME_PTR = &theGame;
 
 	glfwSetKeyCallback(window, GLFW::key_callback);
 	glfwSetCursorPosCallback(window, GLFW::cursor_position_callback);

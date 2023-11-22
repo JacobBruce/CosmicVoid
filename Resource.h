@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <mutex>
+#include <vector>
 #include <unordered_map>
 #include "Data/textures.inc"
 #include "Data/strings.inc"
@@ -18,16 +19,16 @@
 #define SECTOR_HALF     7.568e17
 #define ONE_AU          149597870700.0
 #define ATAN2_1_0       1.57079632679489
-#define FLARE_ADM       1000.0f
-#define FLARE_VIS_DEPTH 0.001f
+#define SPACE_GAS_VIS   0.4f
+#define FLARE_ADM       200.0f
+#define FLARE_VIS_DEPTH 0.005f
 #define STAR_VIS_DEPTH  0.0001f
 #define STAR_TEX_RATIO  4.0f
 #define ISL_DIST_MULT   0.00000005
 #define PLANET_MAG      1000.0f
 #define STAR_MAG        10.0f
+#define STAR_AP_DIST
 #define SCAN_TIME_MS    3000.0
-#define WATER_ALT_DIF   0.16
-#define WATER_ALT_MAX   0.08
 
 #define MOON_TEMP       100.0f
 #define LAVA_MIN_TEMP   1000.0f
@@ -46,14 +47,14 @@
 #define SOLAR_TEMP      5778.0f
 #define SOLAR_LUMI      3.828e26
 
-#define MAX_PLANETS     10
+#define MAX_PLANETS     8
 #define MAX_MOONS       4
-#define MAX_THREADS     2
 
-#define PLANET_TEX_W    1000
-#define PLANET_TEX_H    500
-#define TEX_GEN_DELAY   100
-#define TEX_COL_DELAY   10
+#define PLANET_TEX_W    2000
+#define PLANET_TEX_H    1000
+#define MOON_TEX_W      800
+#define MOON_TEX_H      400
+#define TEX_GEN_DELAY   200
 
 #define PI_MUL_4o3      4.18879020478639
 #define PI_MUL_4        12.5663706143591
@@ -98,6 +99,7 @@ namespace GLOBALS {
 	extern std::array<int,99> key_map;
     extern std::string DATA_FOLDER;
     extern std::mutex COUT_MUTEX;
+	//extern void* GAME_PTR;
 }
 
 enum LifeTypes {

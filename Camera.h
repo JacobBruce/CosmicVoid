@@ -104,7 +104,7 @@ public:
 
 	void Rotate(const GLfloat angle_x, const GLfloat angle_y, const GLfloat angle_z)
 	{
-        view = glm::rotate(glm::rotate(glm::rotate(sView, angle_x, sRight), angle_y, sUp), angle_z, sForward);
+        view = glm::rotate(glm::rotate(glm::rotate(sView, angle_x, sRight), angle_z, sForward), angle_y, sUp);
 	}
 
 	void CalcFOV(const float foc_len, const float width_half)

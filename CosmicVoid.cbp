@@ -11,7 +11,7 @@
 				<Option object_output="obj/Debug/" />
 				<Option type="1" />
 				<Option compiler="gcc" />
-				<Option parameters="C:\CB_Projects\CosmicVoid\" />
+				<Option parameters="C:\cb_projects\CosmicVoid\" />
 				<Compiler>
 					<Add option="-g" />
 				</Compiler>
@@ -21,7 +21,7 @@
 				<Option object_output="obj/Release/" />
 				<Option type="1" />
 				<Option compiler="gcc" />
-				<Option parameters="C:\CB_Projects\CosmicVoid\" />
+				<Option parameters="C:\cb_projects\CosmicVoid\" />
 				<Compiler>
 					<Add option="-O2" />
 				</Compiler>
@@ -32,15 +32,16 @@
 		</Build>
 		<Compiler>
 			<Add option="-Wall" />
-			<Add option="-std=c++11" />
 			<Add option="-m64" />
+			<Add option="-std=c++17" />
 			<Add option="-fexceptions" />
 			<Add option="-DGLEW_STATIC" />
-			<Add directory="C:/Program Files (x86)/AMD APP SDK/2.9-1/include" />
+			<Add directory="vendor/OpenCL-SDK/include" />
 			<Add directory="vendor/soil2/src/SOIL2" />
 			<Add directory="vendor/freetype-gl" />
 			<Add directory="vendor/soloud/include" />
 			<Add directory="vendor/harfbuzz/src" />
+			<Add directory="vendor/glib2/glib" />
 			<Add directory="vendor" />
 		</Compiler>
 		<Linker>
@@ -48,30 +49,38 @@
 			<Add option="-static-libgcc" />
 			<Add option="-static" />
 			<Add option="-m64" />
+			<Add option="-mms-bitfields" />
 			<Add library="soloud" />
-			<Add library="winmm" />
 			<Add library="freetype-gl" />
 			<Add library="freetype" />
 			<Add library="harfbuzz" />
+			<Add library="glib-2.0" />
 			<Add library="png16" />
 			<Add library="bz2" />
 			<Add library="z" />
-			<Add library="glib-2.0" />
 			<Add library="soil2" />
 			<Add library="opencl" />
-			<Add library="glew32" />
 			<Add library="glfw3" />
+			<Add library="glew32" />
 			<Add library="opengl32" />
 			<Add library="glu32" />
 			<Add library="gdi32" />
 			<Add library="graphite2" />
-			<Add library="stdc++" />
-			<Add library="freetype" />
-			<Add directory="C:/Program Files (x86)/AMD APP SDK/2.9-1/lib/x86_64" />
-			<Add directory="vendor/soil2/lib/windows" />
+			<Add library="brotlidec" />
+			<Add library="brotlicommon" />
+			<Add library="winmm" />
+			<Add library="ws2_32" />
+			<Add library="ole32" />
+			<Add library="cfgmgr32" />
+			<Add library="uuid" />
+			<Add library="intl" />
+			<Add library="iconv" />
+			<Add directory="vendor/OpenCL-SDK/lib" />
+			<Add directory="vendor/soil2/lib" />
 			<Add directory="vendor/freetype-gl/lib" />
-			<Add directory="vendor/soloud/bin" />
-			<Add directory="vendor/harfbuzz/bin" />
+			<Add directory="vendor/soloud/lib" />
+			<Add directory="vendor/harfbuzz/lib" />
+			<Add directory="vendor/glib2/lib/glib" />
 		</Linker>
 		<Unit filename="CLTypes.h" />
 		<Unit filename="Camera.h" />
@@ -108,9 +117,6 @@
 		<Unit filename="mapgen/GasPlanet.h" />
 		<Unit filename="mapgen/Planet.h" />
 		<Extensions>
-			<code_completion />
-			<envvars />
-			<debugger />
 			<lib_finder disable_auto="1" />
 		</Extensions>
 	</Project>

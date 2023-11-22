@@ -9,7 +9,6 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
     openGL.Initialize();
 
     window = pWindow;
-    cl_con = openCL.context();
     cursorLocked = false;
 
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -22,6 +21,7 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
     glGenTextures(1, &gl_dtx_id);
     glGenTextures(1, &gl_clt_id);
     glGenTextures(1, &gl_rtx_id);
+    glGenTextures(1, &gl_ftx_id);
     glGenTextures(1, &gl_tex_id);
 
     glBindFramebuffer(GL_FRAMEBUFFER, gl_fb_id);
@@ -55,6 +55,15 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, NULL);
     glClearTexImage(gl_rtx_id, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
 
+    glBindTexture(GL_TEXTURE_2D, gl_ftx_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, NULL);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gl_ftx_id, 0);
+    glClearTexImage(gl_ftx_id, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
+
     glBindTexture(GL_TEXTURE_2D, gl_tex_id);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -64,15 +73,20 @@ void GLGraphics::Initialize(GLFWwindow* pWindow, CL& openCL)
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gl_tex_id, 0);
     glClearTexImage(gl_tex_id, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
 
+    GLenum drawBuffers[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+    glDrawBuffers(2, drawBuffers);
+    glFinish();
+
     gl_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (gl_status != GL_FRAMEBUFFER_COMPLETE) {
         PrintLine("[OpenGL Error]: FrameBuffer is not complete");
         GLFW::error_exit(window);
     }
 
-    gl_memSet.push_back(cl::Memory(clCreateFromGLTexture(cl_con, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, gl_clt_id, &cl_errors[0])));
-    gl_memSet.push_back(cl::Memory(clCreateFromGLTexture(cl_con, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, gl_rtx_id, &cl_errors[1])));
-    gl_memSet.push_back(cl::Memory(clCreateFromGLBuffer(cl_con, CL_MEM_READ_WRITE, openGL.StarBuffer(), &cl_errors[2])));
+    gl_memSet.reserve(3);
+    gl_memSet.emplace_back(clCreateFromGLTexture(openCL.gpu_context(), CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, gl_clt_id, &cl_errors[0]), false);
+    gl_memSet.emplace_back(clCreateFromGLTexture(openCL.gpu_context(), CL_MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, gl_rtx_id, &cl_errors[1]), false);
+    gl_memSet.emplace_back(clCreateFromGLBuffer(openCL.gpu_context(), CL_MEM_READ_WRITE, openGL.StarBuffer(), &cl_errors[2]), false);
 
     for (uint32_t i=0; i < gl_memSet.size(); ++i) {
         if (cl_errors[i] != CL_SUCCESS)
@@ -156,6 +170,9 @@ void GLGraphics::GetWindowSize(int* width, int* height)
 
 void GLGraphics::SetWindowSize(int width, int height)
 {
+	// Get window resolution profile
+    profile = SCREEN::GetProfile(width, height);
+
     windowWidth = width;
     windowHeight = height;
 
@@ -166,6 +183,8 @@ void GLGraphics::SetWindowSize(int width, int height)
     resolution.x = windowWidth;
     resolution.y = windowHeight;
 
+    pixFrac.x = 1.f / profile.Width;
+    pixFrac.y = 1.f / profile.Height;
     widthHalf = windowWidth / 2;
     heightHalf = windowHeight / 2;
     widthSpan = windowWidth - 1;
@@ -199,6 +218,8 @@ void GLGraphics::DisplayFrame()
 	glFinish();
 	glfwSwapBuffers(window);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClearTexImage(gl_rtx_id, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
+    glClearTexImage(gl_ftx_id, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
 }
 
 void GLGraphics::LoadFonts(const std::string font_list, const std::string char_list)
@@ -276,13 +297,13 @@ void GLGraphics::DrawVolGas()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
     glActiveTexture(GL_TEXTURE0);
     glDrawArrays(GL_TRIANGLES, 0, 6);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_R_TO_TEXTURE);
     #if GL_DEBUG
     if (GL::PrintErrors()) {
         PrintLine("Bad function: GLGraphics::DrawVolGas()");
         exit(EXIT_FAILURE);
     }
     #endif
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_R_TO_TEXTURE);
     //glFinish();
 }
 
@@ -292,7 +313,63 @@ void GLGraphics::DrawSkybox()
     glDrawArrays(GL_TRIANGLES, 0, 36);
     #if GL_DEBUG
     if (GL::PrintErrors()) {
-        PrintLine("Bad function: GLGraphics::DrawSprite()");
+        PrintLine("Bad function: GLGraphics::DrawSkybox()");
+        exit(EXIT_FAILURE);
+    }
+    #endif
+}
+
+void GLGraphics::DrawStarFlare()
+{
+    glDisable(GL_BLEND);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, gl_fb_id);
+    DrawSprite();
+    glFinish();
+    #if GL_DEBUG
+    if (GL::PrintErrors()) {
+        PrintLine("Bad function: GLGraphics::DrawStarFlare()");
+        exit(EXIT_FAILURE);
+    }
+    #endif
+}
+
+void GLGraphics::DrawDimFlare()
+{
+    openGL.InitDimFlareRender();
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, gl_rtx_id);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, gl_tex_id);
+    DrawSprite();
+    glFinish();
+    #if GL_DEBUG
+    if (GL::PrintErrors()) {
+        PrintLine("Bad function: GLGraphics::DrawDimFlare()");
+        exit(EXIT_FAILURE);
+    }
+    #endif
+}
+
+void GLGraphics::DrawBlurFlare()
+{
+    float flareDim = openGL.StopDimFlareRender();
+    float floatVis = 1.f - ((pow(16.f,flareDim)-1.f) / 15.f);
+    openGL.InitBlurFrameRender(glm::vec2(1.f,0.f), 1.f);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, gl_rtx_id);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, gl_ftx_id);
+    DrawSprite();
+    glFinish();
+    glEnable(GL_BLEND);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    openGL.InitBlurFrameRender(glm::vec2(0.f,1.f), floatVis);
+    glBindTexture(GL_TEXTURE_2D, gl_tex_id);
+    DrawSprite();
+    glFinish();
+    #if GL_DEBUG
+    if (GL::PrintErrors()) {
+        PrintLine("Bad function: GLGraphics::BlurFrameRT()");
         exit(EXIT_FAILURE);
     }
     #endif
@@ -320,24 +397,42 @@ void GLGraphics::DrawText(const std::string& text, const glm::vec2& pos)
     #endif
 }
 
-void GLGraphics::DrawFrameGL()
+/*void GLGraphics::DrawFrameGL()
 {
     glEnable(GL_DEPTH_TEST);
     DrawSprite();
-}
+    #if GL_DEBUG
+    if (GL::PrintErrors()) {
+        PrintLine("Bad function: GLGraphics::DrawFrameGL()");
+        exit(EXIT_FAILURE);
+    }
+    #endif
+}*/
 
 void GLGraphics::DrawFrameCL()
 {
     glBindTexture(GL_TEXTURE_2D, gl_clt_id);
     DrawSprite();
     glClearTexImage(gl_clt_id, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
+    #if GL_DEBUG
+    if (GL::PrintErrors()) {
+        PrintLine("Bad function: GLGraphics::DrawFrameCL()");
+        exit(EXIT_FAILURE);
+    }
+    #endif
 }
 
 void GLGraphics::DrawFrameRT()
 {
     glBindTexture(GL_TEXTURE_2D, gl_rtx_id);
     DrawSprite();
-    glClearTexImage(gl_rtx_id, 0, GL_RGBA, GL_FLOAT, &gl_fill_clr.x);
+    glFinish();
+    #if GL_DEBUG
+    if (GL::PrintErrors()) {
+        PrintLine("Bad function: GLGraphics::DrawFrameRT()");
+        exit(EXIT_FAILURE);
+    }
+    #endif
 }
 
 bool GLGraphics::CalcBounds(const float cam_foclen, const float& max_radius, const DVec3& position, uint4& result)
